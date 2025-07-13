@@ -1,0 +1,27 @@
+# .conventional-commits.yaml
+types:
+  - feat # New feature
+  - fix # Bug fix
+  - docs # Documentation changes
+  - style # Code style changes (formatting, etc.)
+  - refactor # Code refactoring
+  - perf # Performance improvements
+  - test # Adding or modifying tests
+  - build # Build system changes
+  - ci # CI/CD changes
+  - chore # Maintenance tasks
+  - revert # Revert changes
+
+scopes:
+  - api # API related changes
+  - ui # User interface changes
+  - config # Configuration changes
+  - docs # Documentation
+  - test # Testing
+  - build # Build system
+  - deploy # Deployment
+
+subject-min-length: 10
+subject-max-length: 50
+body-max-line-length: 72
+footer-max-line-length: 72

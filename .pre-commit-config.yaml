@@ -1,0 +1,58 @@
+# .pre-commit-config.yaml
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+default_stages:
+  - pre-commit
+
+repos:
+  # Commit message validation
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.2.0
+    hooks:
+      - id: conventional-pre-commit
+        name: Conventional Commit
+        description: Validates commit message format
+        stages: [commit-msg]
+
+  # General code quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trim Trailing Whitespace
+        description: Removes trailing whitespace
+      - id: end-of-file-fixer
+        name: Fix End of Files
+        description: Ensures files end with newline
+      - id: check-yaml
+        name: Check YAML
+        description: Validates YAML files
+      - id: check-json
+        name: Check JSON
+        description: Validates JSON files
+      - id: check-merge-conflict
+        name: Check Merge Conflicts
+        description: Checks for merge conflict markers
+      - id: check-added-large-files
+        name: Check Large Files
+        description: Prevents large files from being committed
+        args: [--maxkb=500]
+
+  # Markdown formatting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.45.0
+    hooks:
+      - id: markdownlint
+        name: Markdown Lint
+        description: Lints markdown files
+        args: [--fix]
+        files: \.(md|markdown)$
+
+  # Spell checking
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.34.0
+    hooks:
+      - id: typos
+        name: Spell Check
+        description: Checks for typos in code and documentation

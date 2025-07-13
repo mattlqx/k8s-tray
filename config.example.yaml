@@ -1,0 +1,24 @@
+# Example k8s-tray configuration
+# Copy this to ~/.k8s-tray.yaml and modify as needed
+
+# Kubernetes configuration
+kubeconfig: ~/.kube/config # Path to kubeconfig file
+context: "" # Kubernetes context (empty = current context)
+namespace: "default" # Default namespace to monitor
+
+# Polling configuration
+poll_interval: 5s # How often to refresh cluster status (minimum 1s)
+
+# UI configuration
+show_notifications: true # Show desktop notifications for status changes
+theme: "auto" # Theme: auto, light, dark
+
+# Feature flags
+show_metrics: true # Show resource metrics (if available)
+show_logs: false # Show log viewer (future feature)
+show_events: true # Show recent events (future feature)
+
+# Advanced settings
+# max_pods_display: 100         # Maximum number of pods to display in details
+# notification_timeout: 5s      # How long to show notifications
+# log_level: "info"             # Log level: debug, info, warn, error

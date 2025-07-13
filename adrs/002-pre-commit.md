@@ -1,38 +1,51 @@
 # ADR-002: Code Hygiene with Pre-commit Hooks
 
 ## Status
-Proposed
+
+Accepted - Implemented
 
 ## Date
+
 2025-07-13
 
 ## Context
-To maintain high code quality and consistency across the k8s-tray project, we need to establish automated code hygiene practices. Manual code reviews alone are insufficient to catch formatting issues, linting violations, and ensure adherence to commit message standards. Pre-commit hooks provide an automated way to enforce these standards before code enters the repository.
+
+To maintain high code quality and consistency across the k8s-tray project, we need to
+establish automated code hygiene practices. Manual code reviews alone are insufficient to
+catch formatting issues, linting violations, and ensure adherence to commit message
+standards. Pre-commit hooks provide an automated way to enforce these standards before
+code enters the repository.
 
 ## Decision
-We will implement a comprehensive pre-commit hook system using the `pre-commit` framework to enforce code quality standards across multiple dimensions:
+
+We will implement a comprehensive pre-commit hook system using the `pre-commit` framework
+to enforce code quality standards across multiple dimensions:
 
 ## Pre-commit Hook Configuration
 
 ### 1. Go Code Quality
+
 - **Linting**: golangci-lint for comprehensive Go code analysis
 - **Formatting**: gofmt and goimports for consistent code formatting
 - **Security**: gosec for security vulnerability detection
 - **Complexity**: gocyclo for cyclomatic complexity analysis
 
 ### 2. Commit Message Standards
+
 - **Conventional Commits**: Enforce conventional commit format
 - **Message Length**: Limit subject line to 50 characters
 - **Body Wrapping**: Wrap commit message body at 72 characters
 - **Reference Links**: Validate issue/PR references
 
 ### 3. Test Requirements
+
 - **Unit Tests**: Run all unit tests before commit
 - **Coverage**: Ensure minimum test coverage threshold
 - **Test Naming**: Validate test function naming conventions
 - **Benchmark Tests**: Run performance benchmarks
 
 ### 4. Documentation Standards
+
 - **Markdown Formatting**: markdownlint for consistent markdown
 - **Link Validation**: Check for broken links in documentation
 - **Spelling**: Automated spell checking
@@ -41,6 +54,7 @@ We will implement a comprehensive pre-commit hook system using the `pre-commit` 
 ## Implementation Details
 
 ### Pre-commit Configuration File
+
 ```yaml
 # .pre-commit-config.yaml
 repos:
@@ -126,6 +140,7 @@ repos:
 ```
 
 ### golangci-lint Configuration
+
 ```yaml
 # .golangci.yml
 run:
@@ -213,6 +228,7 @@ issues:
 ```
 
 ### Conventional Commits Configuration
+
 ```yaml
 # .conventional-commits.yaml
 types:
@@ -244,6 +260,7 @@ footer-max-line-length: 72
 ```
 
 ### Markdownlint Configuration
+
 ```json
 {
   "MD001": true,
@@ -298,6 +315,7 @@ footer-max-line-length: 72
 ## Setup and Installation
 
 ### 1. Install Pre-commit
+
 ```bash
 # Install pre-commit
 pip install pre-commit
@@ -310,6 +328,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 ```
 
 ### 2. Install Pre-commit Hooks
+
 ```bash
 # Install hooks in repository
 pre-commit install
@@ -322,35 +341,37 @@ pre-commit run --all-files
 ```
 
 ### 3. Development Workflow Integration
+
 ```makefile
 # Makefile targets
 .PHONY: setup-dev lint test format pre-commit-install
 
 setup-dev: pre-commit-install
-	go mod download
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+ go mod download
+ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 pre-commit-install:
-	pre-commit install
-	pre-commit install --hook-type commit-msg
+ pre-commit install
+ pre-commit install --hook-type commit-msg
 
 lint:
-	golangci-lint run
+ golangci-lint run
 
 test:
-	go test -race -cover ./...
+ go test -race -cover ./...
 
 format:
-	gofmt -w .
-	goimports -w .
+ gofmt -w .
+ goimports -w .
 
 pre-commit-run:
-	pre-commit run --all-files
+ pre-commit run --all-files
 ```
 
 ## Hook Execution Order
 
 ### Pre-commit Hooks (Before Commit)
+
 1. **File Formatting**: trailing whitespace, end-of-file fixes
 2. **Go Formatting**: gofmt, goimports
 3. **Go Linting**: golangci-lint
@@ -361,6 +382,7 @@ pre-commit-run:
 8. **File Validation**: YAML, JSON syntax
 
 ### Commit Message Hooks (After Commit Message)
+
 1. **Conventional Commits**: format validation
 2. **Message Length**: subject and body length checks
 3. **Reference Validation**: issue/PR link validation
@@ -368,18 +390,21 @@ pre-commit-run:
 ## Quality Gates
 
 ### Test Coverage Requirements
+
 - **Minimum Coverage**: 80% for all packages
 - **Coverage Report**: Generated on each test run
 - **Coverage Exclusions**: Test files, generated code
 - **Benchmark Tests**: Performance regression detection
 
 ### Linting Standards
+
 - **Cyclomatic Complexity**: Maximum 15 per function
 - **Function Length**: Maximum 80 lines, 40 statements
 - **Security**: No security vulnerabilities allowed
 - **Import Organization**: Grouped and sorted imports
 
 ### Documentation Standards
+
 - **API Documentation**: All public functions documented
 - **README Updates**: Updated for feature changes
 - **ADR Updates**: New ADRs for significant decisions
@@ -388,6 +413,7 @@ pre-commit-run:
 ## CI/CD Integration
 
 ### GitHub Actions Workflow
+
 ```yaml
 name: Code Quality
 on: [push, pull_request]
@@ -407,6 +433,7 @@ jobs:
 ```
 
 ### Local Development
+
 - **Pre-commit installation**: Required for all developers
 - **IDE Integration**: EditorConfig and Go plugin settings
 - **Make targets**: Convenient commands for common tasks
@@ -415,12 +442,14 @@ jobs:
 ## Performance Considerations
 
 ### Hook Optimization
+
 - **Parallel Execution**: Independent hooks run in parallel
 - **File Filtering**: Only run hooks on relevant file types
 - **Caching**: Cache dependencies and build artifacts
 - **Incremental**: Only check changed files where possible
 
 ### Developer Experience
+
 - **Fast Feedback**: Hooks complete in <30 seconds
 - **Clear Messages**: Descriptive error messages
 - **Auto-fixing**: Automatic fixes where possible
@@ -429,12 +458,14 @@ jobs:
 ## Monitoring and Metrics
 
 ### Quality Metrics
+
 - **Pre-commit Success Rate**: Track hook failure rates
 - **Code Coverage Trends**: Monitor coverage over time
 - **Linting Violations**: Track violation types and frequency
 - **Commit Message Quality**: Adherence to conventional commits
 
 ### Developer Adoption
+
 - **Hook Installation**: Track developer setup completion
 - **Bypass Frequency**: Monitor emergency skips
 - **Feedback Collection**: Regular developer experience surveys
@@ -443,6 +474,7 @@ jobs:
 ## Exception Handling
 
 ### Emergency Bypasses
+
 ```bash
 # Skip all pre-commit hooks (emergency only)
 git commit --no-verify -m "emergency fix"
@@ -452,6 +484,7 @@ SKIP=golangci-lint git commit -m "docs: update README"
 ```
 
 ### Legitimate Exceptions
+
 - **Third-party Code**: Exclude vendor directories
 - **Generated Code**: Exclude auto-generated files
 - **Legacy Code**: Gradual migration strategy
@@ -460,12 +493,14 @@ SKIP=golangci-lint git commit -m "docs: update README"
 ## Maintenance and Updates
 
 ### Regular Updates
+
 - **Monthly Reviews**: Update hook versions and configurations
 - **Dependency Updates**: Keep tools and frameworks current
 - **Rule Adjustments**: Refine rules based on team feedback
 - **Documentation**: Keep setup instructions current
 
 ### Continuous Improvement
+
 - **Feedback Integration**: Regular team retrospectives
 - **New Tools**: Evaluate and integrate new quality tools
 - **Performance Optimization**: Continuously improve hook performance
@@ -474,16 +509,22 @@ SKIP=golangci-lint git commit -m "docs: update README"
 ## Success Metrics
 
 ### Code Quality Improvements
+
 - **Reduced Bug Reports**: Fewer production issues
 - **Faster Code Reviews**: Less time spent on formatting issues
 - **Consistent Style**: Uniform code appearance
 - **Better Documentation**: Improved API documentation
 
 ### Development Efficiency
+
 - **Faster Onboarding**: New developers productive sooner
 - **Reduced Rework**: Fewer commits fixing quality issues
 - **Automated Quality**: Less manual quality checking
 - **Confident Releases**: Higher confidence in code quality
 
 ## Decision Outcome
-This ADR establishes a comprehensive code hygiene system using pre-commit hooks to automatically enforce code quality standards, conventional commit messages, test requirements, and documentation formatting. This will improve code quality, reduce review overhead, and ensure consistent standards across the k8s-tray project.
+
+This ADR establishes a comprehensive code hygiene system using pre-commit hooks to
+automatically enforce code quality standards, conventional commit messages, test
+requirements, and documentation formatting. This will improve code quality, reduce review
+overhead, and ensure consistent standards across the k8s-tray project.
