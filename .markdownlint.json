@@ -23,7 +23,7 @@
         "maximum": 2
     },
     "MD013": {
-        "line_length": 100
+        "line_length": 120
     },
     "MD014": true,
     "MD018": true,

@@ -9,16 +9,22 @@ A Mac menu bar application for monitoring Kubernetes cluster health and status.
   - 🟡 Yellow: Some pods in warning states (pending, terminating)
   - 🔴 Red: Critical issues (failed pods, crashes)
 - **Cluster Information**: Quick access to cluster name, version, and context
-- **Pod Status**: Real-time pod counts and status overview
-- **Namespace Switching**: Easy namespace selection from dropdown menu
-- **Auto-refresh**: Configurable polling interval for status updates
-- **Multi-cluster Support**: Switch between different Kubernetes contexts
+- **Pod Status**: Real-time pod counts and status overview with detailed breakdowns
+- **Namespace Switching**: Easy namespace selection from dropdown menu (including "All Namespaces")
+- **Context Switching**: Switch between different Kubernetes contexts seamlessly
+- **Auto-refresh**: Configurable polling interval for status updates (5s to 5min)
+- **Multi-cluster Support**: Full support for switching between different Kubernetes contexts
+- **Cross-platform**: Native system tray integration for Windows (ICO), macOS, and Linux
+- **Windows Optimization**: Platform-specific ICO format icons for proper Windows system tray integration
 
 ## Installation
 
 ### Prerequisites
 
-- macOS 10.15 or later
+- **Operating System**:
+  - Windows 10/11
+  - macOS 10.15 or later
+  - Linux (various distributions with system tray support)
 - kubectl configured with access to your Kubernetes cluster
 - Valid kubeconfig file
 
@@ -135,6 +141,50 @@ KUBECONFIG=/path/to/config ./k8s-tray
 | 🟡 Yellow | Warning | Some pods pending, creating, or terminating |
 | 🔴 Red | Critical | Failed pods, crashes, or other critical issues |
 | ⚫ Gray | Unknown | Unable to connect or determine status |
+
+## Platform-specific Notes
+
+### Windows
+
+K8s Tray is designed for optimal Windows integration with proper ICO format icons for full system tray compatibility.
+
+#### Making the Icon Visible
+
+On Windows, the k8s-tray icon may be hidden in the notification area overflow by default. To make it always visible:
+
+1. **Find the hidden icon**: Look for the `^` arrow icon in your system tray and click it to see hidden icons
+2. **Pin the icon**: Drag the K8s Tray icon from the hidden area to the visible tray area
+3. **Configure Windows settings**:
+   - Right-click on an empty area of the taskbar
+   - Select "Taskbar settings"
+   - Click "Select which icons appear on the taskbar"
+   - Find "k8s-tray" and turn it "On"
+
+#### Troubleshooting Windows Icon Issues
+
+If the icon is not visible or the app doesn't appear in the taskbar settings:
+
+1. **Check if the app is running**: Look in Task Manager for `k8s-tray.exe`
+2. **Run with administrative privileges**: Try running as administrator (right-click → "Run as administrator")
+3. **Restart Windows Explorer**:
+   - Press `Ctrl+Shift+Esc` to open Task Manager
+   - Find "Windows Explorer" and click "Restart"
+4. **Check Windows version compatibility**: Ensure you're using a supported Windows version (Windows 10/11)
+5. **Antivirus interference**: Some antivirus software may block system tray integration
+
+The application includes helpful tooltips and a "Help" menu item on Windows with detailed instructions.
+
+For more information, visit Microsoft's guide: [How to customize the taskbar notification area](https://support.microsoft.com/en-us/windows/how-to-customize-the-taskbar-notification-area)
+
+### macOS
+
+The application appears in the macOS menu bar and should be visible by default. If you don't see it, check if your
+menu bar is full and consider reducing the number of menu bar items.
+
+### Linux
+
+System tray behavior varies by desktop environment. Some older desktop environments may require additional packages
+like `snixembed` to properly display the tray icon.
 
 ## Development
 

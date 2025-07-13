@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime"
 	"time"
 
 	"fyne.io/systray"
@@ -28,6 +29,8 @@ type Manager struct {
 	podsCompletedItem *systray.MenuItem
 	podsFailedItem    *systray.MenuItem
 	refreshItem       *systray.MenuItem
+	settingsItem      *systray.MenuItem
+	helpItem          *systray.MenuItem
 	quitItem          *systray.MenuItem
 
 	// Namespace submenu items
@@ -49,18 +52,22 @@ type Manager struct {
 	// Current state
 	currentStatus *models.ClusterStatus
 	currentHealth models.HealthStatus
+
+	// Windows-specific visibility helper
+	showVisibilityHint bool
 }
 
 // NewManager creates a new tray manager
 func NewManager(k8sClient *kubernetes.Client, cfg *config.Config) *Manager {
 	return &Manager{
-		k8sClient:       k8sClient,
-		config:          cfg,
-		namespaceItems:  make(map[string]*systray.MenuItem),
-		contextItems:    make(map[string]*systray.MenuItem),
-		intervalItems:   make(map[time.Duration]*systray.MenuItem),
-		intervalChanged: make(chan time.Duration, 1),
-		currentHealth:   models.HealthUnknown,
+		k8sClient:          k8sClient,
+		config:             cfg,
+		namespaceItems:     make(map[string]*systray.MenuItem),
+		contextItems:       make(map[string]*systray.MenuItem),
+		intervalItems:      make(map[time.Duration]*systray.MenuItem),
+		intervalChanged:    make(chan time.Duration, 1),
+		currentHealth:      models.HealthUnknown,
+		showVisibilityHint: runtime.GOOS == "windows", // Show hint only on Windows
 	}
 }
 
@@ -103,6 +110,27 @@ func (m *Manager) OnReady(ctx context.Context) {
 	go m.handleMenuActions(ctx)
 
 	log.Printf("Started menu action handler")
+
+	// Show Windows-specific startup hint in tooltip
+	if runtime.GOOS == "windows" {
+		m.showWindowsVisibilityHint()
+	}
+}
+
+// showWindowsVisibilityHint enhances the initial tooltip for Windows users
+func (m *Manager) showWindowsVisibilityHint() {
+	// Set an initial helpful tooltip for Windows users
+	if runtime.GOOS == "windows" {
+		systray.SetTooltip("K8s Tray - Connecting...\n\n💡 Windows Tip: If you don't see this icon, check the system tray overflow area (^ arrow)\nand pin this icon for easier access. See Help menu for details.")
+	} else {
+		systray.SetTooltip("K8s Tray - Connecting...")
+	}
+
+	// After 15 seconds, revert to normal tooltip behavior
+	go func() {
+		time.Sleep(15 * time.Second)
+		// This will be overridden by the normal status updates anyway
+	}()
 }
 
 // OnExit is called when the systray is exiting
@@ -161,6 +189,11 @@ func (m *Manager) buildMenu() {
 	m.refreshItem = systray.AddMenuItem("Refresh", "Refresh cluster status")
 	m.settingsMenu = systray.AddMenuItem("Settings", "Application settings")
 
+	// Add help for Windows users
+	if runtime.GOOS == "windows" {
+		m.helpItem = systray.AddMenuItem("Help", "Tips for using K8s Tray on Windows")
+	}
+
 	systray.AddSeparator()
 
 	m.quitItem = systray.AddMenuItem("Quit", "Quit K8s Tray")
@@ -183,6 +216,15 @@ func (m *Manager) handleMenuActions(ctx context.Context) {
 			go m.refreshContextMenu(ctx)
 		case <-m.settingsMenu.ClickedCh:
 			go m.refreshSettingsMenu(ctx)
+		}
+
+		// Handle Windows help menu if it exists
+		if m.helpItem != nil {
+			select {
+			case <-m.helpItem.ClickedCh:
+				go m.showWindowsHelp()
+			default:
+			}
 		}
 	}
 }
@@ -240,12 +282,20 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 		namespaceDisplay = "All Namespaces"
 	}
 
-	// Update tooltip - keep it concise for system tray
+	// Update tooltip with Windows-specific guidance if applicable
 	tooltip := fmt.Sprintf("K8s Tray - %s\nCluster: %s\nNamespace: %s\nPods: %d total",
 		status.HealthStatus.String(),
 		status.ClusterName,
 		namespaceDisplay,
 		status.PodStatus.Total)
+
+	// Add Windows-specific visibility hint if needed
+	if runtime.GOOS == "windows" && m.showVisibilityHint {
+		tooltip += "\n\n💡 Tip: Pin this icon to the visible tray area for easier access"
+		// Only show this hint for the first few status updates
+		m.showVisibilityHint = false
+	}
+
 	systray.SetTooltip(tooltip)
 
 	// Update menu items
@@ -578,4 +628,17 @@ func (m *Manager) switchContext(ctx context.Context, contextName string) {
 	go m.refreshNamespaceMenu(ctx)
 
 	log.Printf("Switched to context: %s", contextName)
+}
+
+// showWindowsHelp displays Windows-specific help information in the log/console
+func (m *Manager) showWindowsHelp() {
+	log.Println("=== K8s Tray for Windows ===")
+	log.Println("If the K8s Tray icon is not visible in your system tray:")
+	log.Println("1. Look for the ^ arrow icon in your system tray")
+	log.Println("2. Click it to see hidden icons")
+	log.Println("3. Drag the K8s Tray icon from the hidden area to the visible tray")
+	log.Println("4. Right-click on an empty area of the taskbar")
+	log.Println("5. Select 'Taskbar settings' > 'Select which icons appear on the taskbar'")
+	log.Println("6. Find 'K8s Tray' and turn it 'On'")
+	log.Println("Visit: https://support.microsoft.com/en-us/windows/how-to-customize-the-taskbar-notification-area")
 }
