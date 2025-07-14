@@ -15,6 +15,14 @@ import (
 
 const osWindows = "windows"
 
+// Pod phase constants
+const (
+	podPhaseRunning   = "Running"
+	podPhasePending   = "Pending"
+	podPhaseSucceeded = "Succeeded"
+	podPhaseFailed    = "Failed"
+)
+
 // Manager handles the system tray functionality
 type Manager struct {
 	k8sClient *kubernetes.Client
@@ -47,6 +55,13 @@ type Manager struct {
 	settingsMenu  *systray.MenuItem
 	intervalItems map[time.Duration]*systray.MenuItem
 
+	// Pod submenu items for each state
+	podsReadySubmenu     map[string]*systray.MenuItem
+	podsNotReadySubmenu  map[string]*systray.MenuItem
+	podsPendingSubmenu   map[string]*systray.MenuItem
+	podsCompletedSubmenu map[string]*systray.MenuItem
+	podsFailedSubmenu    map[string]*systray.MenuItem
+
 	// Monitoring control
 	intervalChanged chan time.Duration
 
@@ -61,14 +76,19 @@ type Manager struct {
 // NewManager creates a new tray manager
 func NewManager(k8sClient *kubernetes.Client, cfg *config.Config) *Manager {
 	return &Manager{
-		k8sClient:          k8sClient,
-		config:             cfg,
-		namespaceItems:     make(map[string]*systray.MenuItem),
-		contextItems:       make(map[string]*systray.MenuItem),
-		intervalItems:      make(map[time.Duration]*systray.MenuItem),
-		intervalChanged:    make(chan time.Duration, 1),
-		currentHealth:      models.HealthUnknown,
-		showVisibilityHint: runtime.GOOS == osWindows, // Show hint only on Windows
+		k8sClient:            k8sClient,
+		config:               cfg,
+		namespaceItems:       make(map[string]*systray.MenuItem),
+		contextItems:         make(map[string]*systray.MenuItem),
+		intervalItems:        make(map[time.Duration]*systray.MenuItem),
+		podsReadySubmenu:     make(map[string]*systray.MenuItem),
+		podsNotReadySubmenu:  make(map[string]*systray.MenuItem),
+		podsPendingSubmenu:   make(map[string]*systray.MenuItem),
+		podsCompletedSubmenu: make(map[string]*systray.MenuItem),
+		podsFailedSubmenu:    make(map[string]*systray.MenuItem),
+		intervalChanged:      make(chan time.Duration, 1),
+		currentHealth:        models.HealthUnknown,
+		showVisibilityHint:   runtime.GOOS == osWindows, // Show hint only on Windows
 	}
 }
 
@@ -162,19 +182,19 @@ func (m *Manager) buildMenu() {
 
 	// Individual pod status items with better tooltips
 	m.podsReadyItem = systray.AddMenuItem("  🟢 Ready: 0", "Pods that are running and all containers are ready")
-	m.podsReadyItem.Disable()
+	// Keep enabled to allow submenu access on macOS
 
 	m.podsNotReadyItem = systray.AddMenuItem("  🛑 Not Ready: 0", "Pods that are running but some containers are not ready")
-	m.podsNotReadyItem.Disable()
+	// Keep enabled to allow submenu access on macOS
 
 	m.podsPendingItem = systray.AddMenuItem("  ⏳ Pending: 0", "Pods that are waiting to be scheduled or start")
-	m.podsPendingItem.Disable()
+	// Keep enabled to allow submenu access on macOS
 
 	m.podsCompletedItem = systray.AddMenuItem("  ✅ Completed: 0", "Pods that have completed their work successfully")
-	m.podsCompletedItem.Disable()
+	// Keep enabled to allow submenu access on macOS
 
 	m.podsFailedItem = systray.AddMenuItem("  ❌ Failed: 0", "Pods that have failed to start or run")
-	m.podsFailedItem.Disable()
+	// Keep enabled to allow submenu access on macOS
 
 	systray.AddSeparator()
 
@@ -217,6 +237,17 @@ func (m *Manager) handleMenuActions(ctx context.Context) {
 			go m.refreshContextMenu(ctx)
 		case <-m.settingsMenu.ClickedCh:
 			go m.refreshSettingsMenu(ctx)
+		case <-m.podsReadyItem.ClickedCh:
+			// Pod status items are now clickable but we don't need to do anything
+			// The submenus will be handled automatically by the systray library
+		case <-m.podsNotReadyItem.ClickedCh:
+			// Pod status items are now clickable but we don't need to do anything
+		case <-m.podsPendingItem.ClickedCh:
+			// Pod status items are now clickable but we don't need to do anything
+		case <-m.podsCompletedItem.ClickedCh:
+			// Pod status items are now clickable but we don't need to do anything
+		case <-m.podsFailedItem.ClickedCh:
+			// Pod status items are now clickable but we don't need to do anything
 		}
 
 		// Handle Windows help menu if it exists
@@ -311,6 +342,9 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 	m.podsPendingItem.SetTitle(fmt.Sprintf("  ⏳ Pending: %d", status.PodStatus.Pending))
 	m.podsCompletedItem.SetTitle(fmt.Sprintf("  ✅ Completed: %d", status.PodStatus.Completed))
 	m.podsFailedItem.SetTitle(fmt.Sprintf("  ❌ Failed: %d", status.PodStatus.Failed))
+
+	// Update pod submenus with individual pod names
+	m.updatePodSubmenus(status.PodStatus)
 
 	// Show/hide items based on count (optional - keeps menu clean)
 	if status.PodStatus.RunningReady == 0 {
@@ -642,4 +676,101 @@ func (m *Manager) showWindowsHelp() {
 	log.Println("5. Select 'Taskbar settings' > 'Select which icons appear on the taskbar'")
 	log.Println("6. Find 'K8s Tray' and turn it 'On'")
 	log.Println("Visit: https://support.microsoft.com/en-us/windows/how-to-customize-the-taskbar-notification-area")
+}
+
+// updatePodSubmenus updates the submenu items for each pod state category
+func (m *Manager) updatePodSubmenus(podStatus *models.PodStatus) {
+	// Clear existing submenu items
+	m.clearPodSubmenus()
+
+	// Group pods by state
+	var readyPods, notReadyPods, pendingPods, completedPods, failedPods []models.PodDetail
+
+	for _, pod := range podStatus.Details {
+		switch pod.Phase {
+		case podPhaseRunning:
+			if pod.Ready {
+				readyPods = append(readyPods, pod)
+			} else {
+				notReadyPods = append(notReadyPods, pod)
+			}
+		case podPhasePending:
+			pendingPods = append(pendingPods, pod)
+		case podPhaseSucceeded:
+			completedPods = append(completedPods, pod)
+		case podPhaseFailed:
+			failedPods = append(failedPods, pod)
+		}
+	}
+
+	// Add submenu items for each category
+	m.addPodSubmenuItems(m.podsReadyItem, readyPods, m.podsReadySubmenu)
+	m.addPodSubmenuItems(m.podsNotReadyItem, notReadyPods, m.podsNotReadySubmenu)
+	m.addPodSubmenuItems(m.podsPendingItem, pendingPods, m.podsPendingSubmenu)
+	m.addPodSubmenuItems(m.podsCompletedItem, completedPods, m.podsCompletedSubmenu)
+	m.addPodSubmenuItems(m.podsFailedItem, failedPods, m.podsFailedSubmenu)
+}
+
+// clearPodSubmenus clears all existing pod submenu items
+func (m *Manager) clearPodSubmenus() {
+	// Clear ready pods submenu
+	for _, item := range m.podsReadySubmenu {
+		item.Hide()
+	}
+	m.podsReadySubmenu = make(map[string]*systray.MenuItem)
+
+	// Clear not ready pods submenu
+	for _, item := range m.podsNotReadySubmenu {
+		item.Hide()
+	}
+	m.podsNotReadySubmenu = make(map[string]*systray.MenuItem)
+
+	// Clear pending pods submenu
+	for _, item := range m.podsPendingSubmenu {
+		item.Hide()
+	}
+	m.podsPendingSubmenu = make(map[string]*systray.MenuItem)
+
+	// Clear completed pods submenu
+	for _, item := range m.podsCompletedSubmenu {
+		item.Hide()
+	}
+	m.podsCompletedSubmenu = make(map[string]*systray.MenuItem)
+
+	// Clear failed pods submenu
+	for _, item := range m.podsFailedSubmenu {
+		item.Hide()
+	}
+	m.podsFailedSubmenu = make(map[string]*systray.MenuItem)
+}
+
+// addPodSubmenuItems adds submenu items for pods in a specific state
+func (m *Manager) addPodSubmenuItems(parentItem *systray.MenuItem, pods []models.PodDetail, submenuMap map[string]*systray.MenuItem) {
+	if len(pods) == 0 {
+		return
+	}
+
+	for _, pod := range pods {
+		// Create display name with namespace if not "all namespaces" view
+		displayName := pod.Name
+		if m.config.Namespace == config.AllNamespaces {
+			displayName = fmt.Sprintf("%s (%s)", pod.Name, pod.Namespace)
+		}
+
+		// Create tooltip with additional pod information
+		tooltip := fmt.Sprintf("Pod: %s\nNamespace: %s\nPhase: %s\nReady: %t",
+			pod.Name, pod.Namespace, pod.Phase, pod.Ready)
+		if pod.Restarts > 0 {
+			tooltip += fmt.Sprintf("\nRestarts: %d", pod.Restarts)
+		}
+		tooltip += fmt.Sprintf("\nAge: %s", pod.Age.Truncate(time.Second))
+
+		// Add submenu item
+		item := parentItem.AddSubMenuItem(displayName, tooltip)
+		item.Disable() // Make it non-clickable for now, just informational
+
+		// Store in the submenu map using a unique key
+		key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+		submenuMap[key] = item
+	}
 }
