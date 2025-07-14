@@ -27,7 +27,9 @@ jobs:
           - os: macos-latest
             name: macos
             make_target: build-darwin-app
-            artifacts: "dist/*darwin* dist/K8s*.app"
+            artifacts: |
+              dist/*darwin*
+              dist/K8s*.app
 
     runs-on: ${{ matrix.os }}
 
@@ -104,7 +106,8 @@ jobs:
       - name: Create checksums
         run: |
           cd release
-          sha256sum * > checksums.txt
+          # Only create checksums for files, not directories
+          find . -type f -not -name "checksums.txt" -exec sha256sum {} \; > checksums.txt
           echo "=== Checksums ==="
           cat checksums.txt
 
