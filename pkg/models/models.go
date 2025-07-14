@@ -28,13 +28,27 @@ func (h HealthStatus) String() string {
 	}
 }
 
+// ResourceStats represents cluster resource usage statistics
+type ResourceStats struct {
+	CPU    *ResourceStat `json:"cpu"`
+	Memory *ResourceStat `json:"memory"`
+}
+
+// ResourceStat represents usage statistics for a specific resource
+type ResourceStat struct {
+	Used       float64 `json:"used"`       // Used amount in cores (CPU) or GB (Memory)
+	Available  float64 `json:"available"`  // Available amount in cores (CPU) or GB (Memory)
+	Percentage float64 `json:"percentage"` // Usage percentage
+}
+
 // ClusterStatus represents the overall cluster status
 type ClusterStatus struct {
-	ClusterName   string       `json:"cluster_name"`
-	ServerVersion string       `json:"server_version"`
-	PodStatus     *PodStatus   `json:"pod_status"`
-	LastUpdated   time.Time    `json:"last_updated"`
-	HealthStatus  HealthStatus `json:"health_status"`
+	ClusterName   string         `json:"cluster_name"`
+	ServerVersion string         `json:"server_version"`
+	PodStatus     *PodStatus     `json:"pod_status"`
+	Resources     *ResourceStats `json:"resources"`
+	LastUpdated   time.Time      `json:"last_updated"`
+	HealthStatus  HealthStatus   `json:"health_status"`
 }
 
 // PodStatus represents the status of pods in a namespace

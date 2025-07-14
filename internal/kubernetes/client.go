@@ -77,10 +77,22 @@ func (c *Client) GetClusterStatus(ctx context.Context) (*models.ClusterStatus, e
 		return nil, fmt.Errorf("failed to get pod status: %w", err)
 	}
 
+	// Get resource statistics if enabled
+	var resourceStats *models.ResourceStats
+	if c.config.ShowMetrics {
+		resourceStats, err = c.GetResourceStats(ctx)
+		if err != nil {
+			// Log error but don't fail - resource stats are optional
+			fmt.Printf("Warning: failed to get resource stats: %v\n", err)
+			resourceStats = nil
+		}
+	}
+
 	return &models.ClusterStatus{
 		ClusterName:   currentContext,
 		ServerVersion: version.String(),
 		PodStatus:     podStatus,
+		Resources:     resourceStats,
 		LastUpdated:   time.Now(),
 		HealthStatus:  calculateHealthStatus(podStatus),
 	}, nil
@@ -203,6 +215,101 @@ func (c *Client) TestConnection(ctx context.Context) error {
 		return fmt.Errorf("failed to connect to cluster: %w", err)
 	}
 	return nil
+}
+
+// GetResourceStats returns cluster resource statistics (CPU and Memory)
+func (c *Client) GetResourceStats(ctx context.Context) (*models.ResourceStats, error) {
+	// Get all nodes
+	nodes, err := c.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list nodes: %w", err)
+	}
+
+	if len(nodes.Items) == 0 {
+		return nil, fmt.Errorf("no nodes found in cluster")
+	}
+
+	var totalCPUCores float64
+	var totalMemoryGB float64
+
+	// Calculate total allocatable resources from all nodes
+	for _, node := range nodes.Items {
+		// Get CPU capacity (in millicores)
+		if cpuQuantity, ok := node.Status.Allocatable[corev1.ResourceCPU]; ok {
+			totalCPUCores += float64(cpuQuantity.MilliValue()) / 1000.0
+		}
+
+		// Get Memory capacity (in bytes)
+		if memQuantity, ok := node.Status.Allocatable[corev1.ResourceMemory]; ok {
+			totalMemoryGB += float64(memQuantity.Value()) / (1024 * 1024 * 1024)
+		}
+	}
+
+	// Get resource requests from all pods to calculate usage
+	usedCPUCores, usedMemoryGB, err := c.calculateResourceUsage(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate resource usage: %w", err)
+	}
+
+	// Calculate percentages
+	cpuPercentage := 0.0
+	if totalCPUCores > 0 {
+		cpuPercentage = (usedCPUCores / totalCPUCores) * 100
+	}
+
+	memoryPercentage := 0.0
+	if totalMemoryGB > 0 {
+		memoryPercentage = (usedMemoryGB / totalMemoryGB) * 100
+	}
+
+	return &models.ResourceStats{
+		CPU: &models.ResourceStat{
+			Used:       usedCPUCores,
+			Available:  totalCPUCores,
+			Percentage: cpuPercentage,
+		},
+		Memory: &models.ResourceStat{
+			Used:       usedMemoryGB,
+			Available:  totalMemoryGB,
+			Percentage: memoryPercentage,
+		},
+	}, nil
+}
+
+// calculateResourceUsage calculates the total resource requests from all pods
+func (c *Client) calculateResourceUsage(ctx context.Context) (float64, float64, error) {
+	// Get all pods in all namespaces
+	pods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	var totalCPUCores float64
+	var totalMemoryGB float64
+
+	for _, pod := range pods.Items {
+		// Skip pods that are not running
+		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodPending {
+			continue
+		}
+
+		// Sum up resource requests from all containers
+		for _, container := range pod.Spec.Containers {
+			if requests := container.Resources.Requests; requests != nil {
+				// CPU requests (in millicores)
+				if cpuQuantity, ok := requests[corev1.ResourceCPU]; ok {
+					totalCPUCores += float64(cpuQuantity.MilliValue()) / 1000.0
+				}
+
+				// Memory requests (in bytes)
+				if memQuantity, ok := requests[corev1.ResourceMemory]; ok {
+					totalMemoryGB += float64(memQuantity.Value()) / (1024 * 1024 * 1024)
+				}
+			}
+		}
+	}
+
+	return totalCPUCores, totalMemoryGB, nil
 }
 
 // Helper functions

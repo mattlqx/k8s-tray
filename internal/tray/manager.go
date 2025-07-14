@@ -33,6 +33,8 @@ type Manager struct {
 	clusterItem       *systray.MenuItem
 	namespaceItem     *systray.MenuItem
 	podsItem          *systray.MenuItem
+	cpuItem           *systray.MenuItem
+	memoryItem        *systray.MenuItem
 	podsReadyItem     *systray.MenuItem
 	podsNotReadyItem  *systray.MenuItem
 	podsPendingItem   *systray.MenuItem
@@ -180,6 +182,15 @@ func (m *Manager) buildMenu() {
 	m.podsItem = systray.AddMenuItem("Pods: Loading...", "Pod status summary")
 	m.podsItem.Disable()
 
+	// Resource usage items (only show if metrics are enabled)
+	if m.config.ShowMetrics {
+		m.cpuItem = systray.AddMenuItem("CPU: Loading...", "CPU usage across all cluster nodes")
+		m.cpuItem.Disable()
+
+		m.memoryItem = systray.AddMenuItem("Memory: Loading...", "Memory usage across all cluster nodes")
+		m.memoryItem.Disable()
+	}
+
 	// Individual pod status items with better tooltips
 	m.podsReadyItem = systray.AddMenuItem("  🟢 Ready: 0", "Pods that are running and all containers are ready")
 	// Keep enabled to allow submenu access on macOS
@@ -321,6 +332,22 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 		namespaceDisplay,
 		status.PodStatus.Total)
 
+	// Add resource stats to tooltip if available
+	if m.config.ShowMetrics && status.Resources != nil {
+		if status.Resources.CPU != nil {
+			tooltip += fmt.Sprintf("\nCPU: %.1f/%.1f cores (%.1f%%)",
+				status.Resources.CPU.Used,
+				status.Resources.CPU.Available,
+				status.Resources.CPU.Percentage)
+		}
+		if status.Resources.Memory != nil {
+			tooltip += fmt.Sprintf("\nMemory: %.1f/%.1f GB (%.1f%%)",
+				status.Resources.Memory.Used,
+				status.Resources.Memory.Available,
+				status.Resources.Memory.Percentage)
+		}
+	}
+
 	// Add Windows-specific visibility hint if needed
 	if runtime.GOOS == osWindows && m.showVisibilityHint {
 		tooltip += "\n\n💡 Tip: Pin this icon to the visible tray area for easier access"
@@ -335,6 +362,22 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 	m.clusterItem.SetTitle(fmt.Sprintf("Cluster: %s", status.ClusterName))
 	m.namespaceItem.SetTitle(fmt.Sprintf("Namespace: %s", namespaceDisplay))
 	m.podsItem.SetTitle(fmt.Sprintf("Pods: %d total", status.PodStatus.Total))
+
+	// Update resource stats if enabled and available
+	if m.config.ShowMetrics && status.Resources != nil {
+		if status.Resources.CPU != nil {
+			m.cpuItem.SetTitle(fmt.Sprintf("CPU: %.1f/%.1f cores (%.1f%%)",
+				status.Resources.CPU.Used,
+				status.Resources.CPU.Available,
+				status.Resources.CPU.Percentage))
+		}
+		if status.Resources.Memory != nil {
+			m.memoryItem.SetTitle(fmt.Sprintf("Memory: %.1f/%.1f GB (%.1f%%)",
+				status.Resources.Memory.Used,
+				status.Resources.Memory.Available,
+				status.Resources.Memory.Percentage))
+		}
+	}
 
 	// Update individual pod status items with visual indicators
 	m.podsReadyItem.SetTitle(fmt.Sprintf("  🟢 Ready: %d", status.PodStatus.RunningReady))
