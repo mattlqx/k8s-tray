@@ -11,21 +11,21 @@ import (
 // Config represents the application configuration
 type Config struct {
 	// Kubernetes configuration
-	KubeConfig      string `yaml:"kubeconfig"`
-	Context         string `yaml:"context"`
-	Namespace       string `yaml:"namespace"`
+	KubeConfig string `yaml:"kubeconfig"`
+	Context    string `yaml:"context"`
+	Namespace  string `yaml:"namespace"`
 
 	// Polling configuration
-	PollInterval    time.Duration `yaml:"poll_interval"`
+	PollInterval time.Duration `yaml:"poll_interval"`
 
 	// UI configuration
-	ShowNotifications bool `yaml:"show_notifications"`
-	Theme            string `yaml:"theme"`
+	ShowNotifications bool   `yaml:"show_notifications"`
+	Theme             string `yaml:"theme"`
 
 	// Feature flags
-	ShowMetrics      bool `yaml:"show_metrics"`
-	ShowLogs         bool `yaml:"show_logs"`
-	ShowEvents       bool `yaml:"show_events"`
+	ShowMetrics bool `yaml:"show_metrics"`
+	ShowLogs    bool `yaml:"show_logs"`
+	ShowEvents  bool `yaml:"show_events"`
 }
 
 // Constants for namespace selection
@@ -36,14 +36,14 @@ const (
 // Default configuration values
 var defaultConfig = Config{
 	KubeConfig:        getDefaultKubeConfig(),
-	Context:          "",
-	Namespace:        AllNamespaces,
-	PollInterval:     15 * time.Second,
+	Context:           "",
+	Namespace:         AllNamespaces,
+	PollInterval:      15 * time.Second,
 	ShowNotifications: true,
-	Theme:            "auto",
-	ShowMetrics:      true,
-	ShowLogs:         false,
-	ShowEvents:       true,
+	Theme:             "auto",
+	ShowMetrics:       true,
+	ShowLogs:          false,
+	ShowEvents:        true,
 }
 
 // Load loads the configuration from file or returns default configuration
@@ -64,9 +64,7 @@ func Load() (*Config, error) {
 	}
 
 	// Validate configuration
-	if err := cfg.validate(); err != nil {
-		return nil, err
-	}
+	cfg.validate()
 
 	return &cfg, nil
 }
@@ -87,12 +85,12 @@ func (c *Config) Save() error {
 		return err
 	}
 
-	// Write to file
-	return os.WriteFile(configPath, data, 0644)
+	// Write to file with secure permissions
+	return os.WriteFile(configPath, data, 0600)
 }
 
 // validate validates the configuration
-func (c *Config) validate() error {
+func (c *Config) validate() {
 	if c.PollInterval < time.Second {
 		c.PollInterval = time.Second
 	}
@@ -100,8 +98,6 @@ func (c *Config) validate() error {
 	if c.PollInterval > 5*time.Minute {
 		c.PollInterval = 5 * time.Minute
 	}
-
-	return nil
 }
 
 // getConfigPath returns the path to the configuration file

@@ -47,10 +47,7 @@ func TestConfigValidation(t *testing.T) {
 		PollInterval: 500 * time.Millisecond, // Too short
 	}
 
-	err := cfg.validate()
-	if err != nil {
-		t.Errorf("Validation should not fail: %v", err)
-	}
+	cfg.validate()
 
 	// Should be adjusted to minimum
 	if cfg.PollInterval < time.Second {

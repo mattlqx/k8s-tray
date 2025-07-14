@@ -13,6 +13,8 @@ import (
 	"github.com/k8s-tray/k8s-tray/pkg/models"
 )
 
+const osWindows = "windows"
+
 // Manager handles the system tray functionality
 type Manager struct {
 	k8sClient *kubernetes.Client
@@ -29,7 +31,6 @@ type Manager struct {
 	podsCompletedItem *systray.MenuItem
 	podsFailedItem    *systray.MenuItem
 	refreshItem       *systray.MenuItem
-	settingsItem      *systray.MenuItem
 	helpItem          *systray.MenuItem
 	quitItem          *systray.MenuItem
 
@@ -67,7 +68,7 @@ func NewManager(k8sClient *kubernetes.Client, cfg *config.Config) *Manager {
 		intervalItems:      make(map[time.Duration]*systray.MenuItem),
 		intervalChanged:    make(chan time.Duration, 1),
 		currentHealth:      models.HealthUnknown,
-		showVisibilityHint: runtime.GOOS == "windows", // Show hint only on Windows
+		showVisibilityHint: runtime.GOOS == osWindows, // Show hint only on Windows
 	}
 }
 
@@ -112,7 +113,7 @@ func (m *Manager) OnReady(ctx context.Context) {
 	log.Printf("Started menu action handler")
 
 	// Show Windows-specific startup hint in tooltip
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == osWindows {
 		m.showWindowsVisibilityHint()
 	}
 }
@@ -120,7 +121,7 @@ func (m *Manager) OnReady(ctx context.Context) {
 // showWindowsVisibilityHint enhances the initial tooltip for Windows users
 func (m *Manager) showWindowsVisibilityHint() {
 	// Set an initial helpful tooltip for Windows users
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == osWindows {
 		systray.SetTooltip("K8s Tray - Connecting...\n\n💡 Windows Tip: If you don't see this icon, check the system tray overflow area (^ arrow)\nand pin this icon for easier access. See Help menu for details.")
 	} else {
 		systray.SetTooltip("K8s Tray - Connecting...")
@@ -190,7 +191,7 @@ func (m *Manager) buildMenu() {
 	m.settingsMenu = systray.AddMenuItem("Settings", "Application settings")
 
 	// Add help for Windows users
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == osWindows {
 		m.helpItem = systray.AddMenuItem("Help", "Tips for using K8s Tray on Windows")
 	}
 
@@ -290,7 +291,7 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 		status.PodStatus.Total)
 
 	// Add Windows-specific visibility hint if needed
-	if runtime.GOOS == "windows" && m.showVisibilityHint {
+	if runtime.GOOS == osWindows && m.showVisibilityHint {
 		tooltip += "\n\n💡 Tip: Pin this icon to the visible tray area for easier access"
 		// Only show this hint for the first few status updates
 		m.showVisibilityHint = false
@@ -528,7 +529,7 @@ func (m *Manager) refreshSettingsMenu(ctx context.Context) {
 }
 
 // setRefreshInterval changes the refresh interval
-func (m *Manager) setRefreshInterval(ctx context.Context, interval time.Duration) {
+func (m *Manager) setRefreshInterval(_ context.Context, interval time.Duration) {
 	// Uncheck previous selection
 	if prevItem, exists := m.intervalItems[m.config.PollInterval]; exists {
 		prevItem.Uncheck()

@@ -58,35 +58,6 @@ to enforce code quality standards across multiple dimensions:
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  # Go code quality
-  - repo: https://github.com/dnephin/pre-commit-golang
-    rev: v0.5.1
-    hooks:
-      - id: go-fmt
-        name: Go Format
-        description: Formats Go code
-      - id: go-imports
-        name: Go Imports
-        description: Organizes Go imports
-      - id: go-vet-mod
-        name: Go Vet
-        description: Runs go vet
-      - id: go-unit-tests-mod
-        name: Go Unit Tests
-        description: Runs go test
-        args: [-race, -cover]
-      - id: golangci-lint-mod
-        name: golangci-lint
-        description: Runs golangci-lint
-
-  # Security scanning
-  - repo: https://github.com/securecodewarrior/github-action-add-sarif
-    rev: v1.1.0
-    hooks:
-      - id: gosec
-        name: Go Security
-        description: Runs gosec security scanner
-
   # Commit message validation
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.4.0

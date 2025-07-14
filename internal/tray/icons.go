@@ -32,7 +32,7 @@ func createPNGIcon(r, g, b uint8) []byte {
 
 	// Create a simple circle/dot in the center
 	centerX, centerY := size/2, size/2
-	radius := size/4
+	radius := size / 4
 
 	iconColor := color.RGBA{r, g, b, 255}
 
@@ -47,7 +47,10 @@ func createPNGIcon(r, g, b uint8) []byte {
 	}
 
 	var buf bytes.Buffer
-	png.Encode(&buf, img)
+	if err := png.Encode(&buf, img); err != nil {
+		// If encoding fails, return empty byte slice
+		return []byte{}
+	}
 	return buf.Bytes()
 }
 
@@ -68,7 +71,7 @@ func createICOIcon(r, g, b uint8) []byte {
 
 	// Create a simple circle/dot in the center
 	centerX, centerY := size/2, size/2
-	radius := size/4
+	radius := size / 4
 
 	iconColor := color.RGBA{r, g, b, 255}
 
@@ -88,7 +91,6 @@ func createICOIcon(r, g, b uint8) []byte {
 
 // createICOFromImage converts an image to ICO format
 func createICOFromImage(img *image.RGBA) []byte {
-	const size = 16
 	bounds := img.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
@@ -97,22 +99,41 @@ func createICOFromImage(img *image.RGBA) []byte {
 	var buf bytes.Buffer
 
 	// ICO header (6 bytes)
-	binary.Write(&buf, binary.LittleEndian, uint16(0))    // Reserved (must be 0)
-	binary.Write(&buf, binary.LittleEndian, uint16(1))    // Type (1 = ICO)
-	binary.Write(&buf, binary.LittleEndian, uint16(1))    // Number of images
+	if err := binary.Write(&buf, binary.LittleEndian, uint16(0)); err != nil {
+		return []byte{}
+	} // Reserved (must be 0)
+	if err := binary.Write(&buf, binary.LittleEndian, uint16(1)); err != nil {
+		return []byte{}
+	} // Type (1 = ICO)
+	if err := binary.Write(&buf, binary.LittleEndian, uint16(1)); err != nil {
+		return []byte{}
+	} // Number of images
 
 	// ICO directory entry (16 bytes)
-	buf.WriteByte(byte(width))                            // Width (0 = 256)
-	buf.WriteByte(byte(height))                           // Height (0 = 256)
-	buf.WriteByte(0)                                      // Color count (0 = >256 colors)
-	buf.WriteByte(0)                                      // Reserved
-	binary.Write(&buf, binary.LittleEndian, uint16(1))   // Color planes
-	binary.Write(&buf, binary.LittleEndian, uint16(32))  // Bits per pixel
+	buf.WriteByte(byte(width))  // Width (0 = 256)
+	buf.WriteByte(byte(height)) // Height (0 = 256)
+	buf.WriteByte(0)            // Color count (0 = >256 colors)
+	buf.WriteByte(0)            // Reserved
+	if err := binary.Write(&buf, binary.LittleEndian, uint16(1)); err != nil {
+		return []byte{}
+	} // Color planes
+	if err := binary.Write(&buf, binary.LittleEndian, uint16(32)); err != nil {
+		return []byte{}
+	} // Bits per pixel
 
 	// Create the bitmap data
 	bitmapData := createBitmapData(img)
-	binary.Write(&buf, binary.LittleEndian, uint32(len(bitmapData))) // Image size
-	binary.Write(&buf, binary.LittleEndian, uint32(22))              // Offset to image data
+	// Check for potential overflow when converting to uint32
+	if len(bitmapData) > 4294967295 {
+		return []byte{}
+	}
+	// #nosec G115 -- Safe conversion for small icon dimensions
+	if err := binary.Write(&buf, binary.LittleEndian, uint32(len(bitmapData))); err != nil {
+		return []byte{}
+	} // Image size
+	if err := binary.Write(&buf, binary.LittleEndian, uint32(22)); err != nil {
+		return []byte{}
+	} // Offset to image data
 
 	// Append the bitmap data
 	buf.Write(bitmapData)
@@ -128,18 +149,34 @@ func createBitmapData(img *image.RGBA) []byte {
 
 	var buf bytes.Buffer
 
+	// Helper function to handle binary.Write errors
+	writeOrReturn := func(data interface{}) bool {
+		if err := binary.Write(&buf, binary.LittleEndian, data); err != nil {
+			return false
+		}
+		return true
+	}
+
 	// Bitmap info header (40 bytes)
-	binary.Write(&buf, binary.LittleEndian, uint32(40))           // Header size
-	binary.Write(&buf, binary.LittleEndian, int32(width))        // Width
-	binary.Write(&buf, binary.LittleEndian, int32(height*2))     // Height (doubled for ICO)
-	binary.Write(&buf, binary.LittleEndian, uint16(1))           // Planes
-	binary.Write(&buf, binary.LittleEndian, uint16(32))          // Bits per pixel
-	binary.Write(&buf, binary.LittleEndian, uint32(0))           // Compression
-	binary.Write(&buf, binary.LittleEndian, uint32(0))           // Image size
-	binary.Write(&buf, binary.LittleEndian, int32(0))            // X pixels per meter
-	binary.Write(&buf, binary.LittleEndian, int32(0))            // Y pixels per meter
-	binary.Write(&buf, binary.LittleEndian, uint32(0))           // Colors used
-	binary.Write(&buf, binary.LittleEndian, uint32(0))           // Important colors
+	// Check for potential integer overflow before converting
+	if width < 0 || width > 2147483647 || height < 0 || height > 2147483647 {
+		return []byte{}
+	}
+
+	// #nosec G115 -- Safe conversion for small icon dimensions
+	if !writeOrReturn(uint32(40)) || // Header size
+		!writeOrReturn(int32(width)) || // Width
+		!writeOrReturn(int32(height*2)) || // Height (doubled for ICO)
+		!writeOrReturn(uint16(1)) || // Planes
+		!writeOrReturn(uint16(32)) || // Bits per pixel
+		!writeOrReturn(uint32(0)) || // Compression
+		!writeOrReturn(uint32(0)) || // Image size
+		!writeOrReturn(int32(0)) || // X pixels per meter
+		!writeOrReturn(int32(0)) || // Y pixels per meter
+		!writeOrReturn(uint32(0)) || // Colors used
+		!writeOrReturn(uint32(0)) { // Important colors
+		return []byte{}
+	}
 
 	// Pixel data (BGRA format, bottom-up)
 	for y := height - 1; y >= 0; y-- {

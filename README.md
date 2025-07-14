@@ -235,12 +235,16 @@ k8s-tray/
 
 ### Architecture
 
-k8s-tray follows a modular architecture:
+k8s-tray follows a modular architecture with comprehensive cross-platform support:
 
 - **Configuration Layer**: Handles application settings and kubeconfig management
 - **Kubernetes Layer**: Manages cluster connections and API interactions
-- **Tray Layer**: Handles system tray integration and menu management
+- **Tray Layer**: Handles system tray integration and menu management with platform-specific optimizations
 - **UI Layer**: Future extensibility for settings dialogs and detailed views
+
+**Cross-Platform Design**: The application supports Windows, macOS, and Linux with platform-specific
+optimizations including ICO format icons for Windows and proper app bundle support for macOS.
+See [ADR-003](adrs/003-cross-platform-support.md) for detailed cross-platform architecture decisions.
 
 ### Adding Features
 
@@ -311,6 +315,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Roadmap
 
+- [x] **Cross-platform support** - Complete support for Windows, macOS, and Linux (ADR-003)
+- [x] **Windows optimization** - ICO format icons and system tray integration
+- [x] **Multi-architecture** - AMD64 and ARM64 support for all platforms
 - [ ] Settings dialog UI
 - [ ] Pod log viewer
 - [ ] Event viewer
@@ -318,4 +325,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] Multi-cluster management
 - [ ] Desktop notifications
 - [ ] Plugin system
-- [ ] Windows and Linux support
