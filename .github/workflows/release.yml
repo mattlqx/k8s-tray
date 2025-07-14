@@ -1,0 +1,153 @@
+---
+name: Release
+
+"on":
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create release for"
+        required: true
+        type: string
+
+jobs:
+  build-release:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux
+            make_target: build-linux
+            artifacts: "dist/*linux*"
+          - os: ubuntu-latest
+            name: windows
+            make_target: build-windows
+            artifacts: "dist/*windows*"
+          - os: macos-latest
+            name: macos
+            make_target: build-darwin-app
+            artifacts: "dist/*darwin* dist/K8s*.app"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Install cross-compilation dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-mingw-w64-x86-64 \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
+
+      - name: Build for ${{ matrix.name }}
+        run: make ${{ matrix.make_target }}
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-tray-${{ matrix.name }}
+          path: ${{ matrix.artifacts }}
+
+  create-release:
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+
+          # Copy all built binaries to release directory
+          find artifacts -type f \( -name "k8s-tray*" -o -name "*.exe" \) \
+            -exec cp {} release/ \;
+
+          # Handle macOS app bundle separately
+          if [ -d "artifacts/k8s-tray-macos" ]; then
+            cd artifacts/k8s-tray-macos
+            if [ -d "dist" ]; then
+              # If there's an app bundle, create a zip for it
+              if ls dist/K8s*.app >/dev/null 2>&1; then
+                zip -r ../../release/k8s-tray-macos-app.zip dist/K8s*.app
+              fi
+              # Copy other macOS binaries
+              find dist -name "*darwin*" -type f -exec cp {} ../../release/ \;
+            else
+              # Fallback: copy everything
+              find . -type f -exec cp {} ../../release/ \;
+            fi
+            cd ../..
+          fi
+
+          ls -la release/
+
+      - name: Create checksums
+        run: |
+          cd release
+          sha256sum * > checksums.txt
+          echo "=== Checksums ==="
+          cat checksums.txt
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: |
+            release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: >-
+            ${{
+              contains(steps.tag.outputs.tag, 'rc') ||
+              contains(steps.tag.outputs.tag, 'beta') ||
+              contains(steps.tag.outputs.tag, 'alpha')
+            }}
+          body: |
+            ## Release ${{ steps.tag.outputs.tag }}
+
+            ### Downloads
+            - **Linux**: `k8s-tray-linux-amd64`, `k8s-tray-linux-arm64`
+            - **macOS**: `k8s-tray-darwin-amd64`, `k8s-tray-darwin-arm64`,
+              `k8s-tray-darwin-universal`, `k8s-tray-macos-app.zip`
+            - **Windows**: `k8s-tray-windows-amd64.exe`,
+              `k8s-tray-windows-arm64.exe`
+
+            ### Verification
+            Use the included `checksums.txt` to verify download integrity:
+            ```bash
+            sha256sum -c checksums.txt
+            ```
+
+            ### Installation
+            1. Download the appropriate binary for your platform
+            2. Make it executable (Linux/macOS): `chmod +x k8s-tray-*`
+            3. Run the binary or install the app bundle (macOS)

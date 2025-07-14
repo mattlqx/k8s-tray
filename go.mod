@@ -2,7 +2,7 @@ module github.com/k8s-tray/k8s-tray
 
 go 1.23
 
-toolchain go1.23.11
+toolchain go1.23.4
 
 require (
 	fyne.io/systray v1.10.1-0.20231115130155-104f5ef7839e

@@ -25,7 +25,7 @@ pre-commit-install: ## Install pre-commit hooks
 	pre-commit install --hook-type commit-msg
 
 lint: ## Run linters
-	golangci-lint run
+	golangci-lint run ./...
 
 test: ## Run tests
 	go test -race -cover ./...
