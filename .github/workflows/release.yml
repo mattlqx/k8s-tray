@@ -2,17 +2,57 @@
 name: Release
 
 "on":
-  release:
-    types: [created]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Tag to create release for"
-        required: true
-        type: string
+      dry_run:
+        description: "Perform a dry run (don't create release)"
+        required: false
+        default: false
+        type: boolean
+  workflow_run:
+    workflows: ["Code Quality and Build"]
+    types: [completed]
+    branches: [main]
 
 jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    # Only run if CI workflow succeeded or if manually triggered
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      version: ${{ steps.semver.outputs.version }}
+      tag: ${{ steps.semver.outputs.tag }}
+      version_tag: ${{ steps.semver.outputs.version_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history for conventional commits
+
+      - name: Determine next version
+        id: semver
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "v"
+          major_pattern: "BREAKING CHANGE:|feat!:|fix!:"
+          minor_pattern: "feat:"
+          patch_pattern: "fix:|perf:"
+          version_format: "${major}.${minor}.${patch}"
+          search_commit_body: true
+          user_format_type: "csv"
+
+      - name: Show determined version
+        run: |
+          echo "Determined version: ${{ steps.semver.outputs.version }}"
+          echo "Tag: ${{ steps.semver.outputs.tag }}"
+          echo "Version tag: ${{ steps.semver.outputs.version_tag }}"
+          echo "All outputs:"
+          echo "  version: '${{ steps.semver.outputs.version }}'"
+          echo "  tag: '${{ steps.semver.outputs.tag }}'"
+          echo "  version_tag: '${{ steps.semver.outputs.version_tag }}'"
+          echo "  increment: '${{ steps.semver.outputs.increment }}'"
+
   build-release:
+    needs: determine-version
     strategy:
       matrix:
         include:
@@ -38,7 +78,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
-          go-version: "1.23"
+          go-version: "1.23.4"
           cache: true
 
       - name: Install cross-compilation dependencies (Linux)
@@ -63,11 +103,10 @@ jobs:
           path: ${{ matrix.artifacts }}
 
   create-release:
-    needs: build-release
+    needs: [determine-version, build-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - uses: actions/checkout@v4
 
@@ -78,7 +117,6 @@ jobs:
 
       - name: Prepare release assets
         run: |
-          set -x
           mkdir -p release
 
           # Copy all built binaries to release directory, excluding generic names
@@ -125,31 +163,43 @@ jobs:
           echo "=== Checksums ==="
           cat checksums.txt
 
-      - name: Determine tag
-        id: tag
+      - name: Create and push tag
+        if: ${{ !github.event.inputs.dry_run }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          echo "Debug: Version from needs: ${{ needs.determine-version.outputs.version }}"
+          echo "Debug: Tag from needs: ${{ needs.determine-version.outputs.tag }}"
+
+          # Set the tag variable with fallback
+          TAG="${{ needs.determine-version.outputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="v${{ needs.determine-version.outputs.version }}"
           fi
 
-      - name: Upload release assets
+          echo "Using tag: $TAG"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release ${{ needs.determine-version.outputs.version }}"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        if: ${{ !github.event.inputs.dry_run }}
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ needs.determine-version.outputs.tag || format('v{0}', needs.determine-version.outputs.version) }}
+          name: Release ${{ needs.determine-version.outputs.version }}
           files: |
             release/*
           generate_release_notes: true
           draft: false
           prerelease: >-
             ${{
-              contains(steps.tag.outputs.tag, 'rc') ||
-              contains(steps.tag.outputs.tag, 'beta') ||
-              contains(steps.tag.outputs.tag, 'alpha')
+              contains(needs.determine-version.outputs.tag, 'rc') ||
+              contains(needs.determine-version.outputs.tag, 'beta') ||
+              contains(needs.determine-version.outputs.tag, 'alpha')
             }}
           body: |
-            ## Release ${{ steps.tag.outputs.tag }}
+            ## Release ${{ needs.determine-version.outputs.version }}
 
             ### Downloads
             - **Linux**: `k8s-tray-linux-amd64`, `k8s-tray-linux-arm64`
