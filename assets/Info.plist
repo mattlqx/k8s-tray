@@ -5,7 +5,7 @@
     <key>CFBundleExecutable</key>
     <string>k8s-tray</string>
     <key>CFBundleIdentifier</key>
-    <string>com.k8s-tray.k8s-tray</string>
+    <string>net.lqx.k8s-tray</string>
     <key>CFBundleName</key>
     <string>K8s Tray</string>
     <key>CFBundlePackageType</key>

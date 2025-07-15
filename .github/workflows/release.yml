@@ -33,11 +33,12 @@ jobs:
         uses: paulhatch/semantic-version@v5.4.0
         with:
           tag_prefix: "v"
-          major_pattern: "BREAKING CHANGE:|feat!:|fix!:"
-          minor_pattern: "feat:"
-          patch_pattern: "fix:|perf:"
+          major_pattern: "^BREAKING CHANGE|^feat!|^fix!"
+          minor_pattern: "^feat"
+          bump_each_commit: true
+          bump_each_commit_patch_pattern: "^fix|^perf"
           version_format: "${major}.${minor}.${patch}"
-          search_commit_body: true
+          search_commit_body: false
           user_format_type: "csv"
 
       - name: Show determined version
