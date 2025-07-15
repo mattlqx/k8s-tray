@@ -32,7 +32,7 @@ print_error() {
 BINARY_NAME="k8s-tray"
 BUILD_DIR="dist"
 APP_NAME="K8s Tray"
-BUNDLE_ID="com.k8s-tray.k8s-tray"
+BUNDLE_ID="net.lqx.k8s-tray"
 
 # Function to create app bundle
 create_app_bundle() {

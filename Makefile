@@ -92,6 +92,7 @@ build-darwin: ## Build for macOS (requires macOS or osxcross)
 	else \
 		echo "Cannot create universal binary - one or both architecture builds failed"; \
 	fi
+	chmod 755 $(BUILD_DIR)/$(BINARY_NAME)*
 
 build-darwin-universal: build-darwin ## Build universal macOS binary (combines AMD64 and ARM64)
 	@echo "Universal macOS binary target completed - check dist/ for k8s-tray-darwin-universal"
