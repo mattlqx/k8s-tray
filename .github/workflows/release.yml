@@ -132,11 +132,25 @@ jobs:
           APP_BUNDLE=$(find dist -name "*.app" -type d | head -1)
           if [ -n "$APP_BUNDLE" ]; then
             echo "Signing app bundle: $APP_BUNDLE"
-            /usr/bin/codesign --force -s "$MACOS_CERTIFICATE_NAME" --deep "$APP_BUNDLE" -v
+
+            # Sign the binary first
+            BINARY_PATH="$APP_BUNDLE/Contents/MacOS/k8s-tray"
+            if [ -f "$BINARY_PATH" ]; then
+              echo "Signing binary: $BINARY_PATH"
+              /usr/bin/codesign --force --options runtime --entitlements assets/entitlements.plist -s "$MACOS_CERTIFICATE_NAME" "$BINARY_PATH" -v
+            fi
+
+            # Then sign the app bundle
+            /usr/bin/codesign --force --options runtime --entitlements assets/entitlements.plist -s "$MACOS_CERTIFICATE_NAME" "$APP_BUNDLE" -v
 
             # Verify the signature
             /usr/bin/codesign -vvv --deep --strict "$APP_BUNDLE"
-            spctl -a -vvv "$APP_BUNDLE"
+            echo "=== Code signature verification ==="
+            /usr/bin/codesign -dvvv "$APP_BUNDLE"
+
+            # Check if it would pass Gatekeeper (this might still fail until notarized)
+            echo "=== Gatekeeper assessment ==="
+            spctl -a -vvv "$APP_BUNDLE" || echo "Note: Gatekeeper rejection is expected until notarization"
           else
             echo "No app bundle found to sign"
           fi
