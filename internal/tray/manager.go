@@ -326,9 +326,10 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 	}
 
 	// Update tooltip with Windows-specific guidance if applicable
-	tooltip := fmt.Sprintf("K8s Tray - %s\nCluster: %s\nNamespace: %s\nPods: %d total",
+	tooltip := fmt.Sprintf("K8s Tray - %s\nCluster: %s (%s)\nNamespace: %s\nPods: %d total",
 		status.HealthStatus.String(),
 		status.ClusterName,
+		status.ServerVersion,
 		namespaceDisplay,
 		status.PodStatus.Total)
 
@@ -359,7 +360,7 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 
 	// Update menu items
 	m.statusItem.SetTitle(fmt.Sprintf("Status: %s", status.HealthStatus.String()))
-	m.clusterItem.SetTitle(fmt.Sprintf("Cluster: %s", status.ClusterName))
+	m.clusterItem.SetTitle(fmt.Sprintf("Cluster: %s (%s)", status.ClusterName, status.ServerVersion))
 	m.namespaceItem.SetTitle(fmt.Sprintf("Namespace: %s", namespaceDisplay))
 	m.podsItem.SetTitle(fmt.Sprintf("Pods: %d total", status.PodStatus.Total))
 
