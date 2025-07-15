@@ -29,7 +29,7 @@ jobs:
             make_target: build-darwin-app
             artifacts: |
               dist/*darwin*
-              dist/K8s*.app
+              dist/K8s*.app/**
 
     runs-on: ${{ matrix.os }}
 
@@ -78,29 +78,43 @@ jobs:
 
       - name: Prepare release assets
         run: |
+          set -x
           mkdir -p release
 
-          # Copy all built binaries to release directory
-          find artifacts -type f \( -name "k8s-tray*" -o -name "*.exe" \) \
+          # Copy all built binaries to release directory, excluding generic names
+          find artifacts -type f \( -name "k8s-tray-*" -o -name "*.exe" \) \
+            -not -name "k8s-tray" \
             -exec cp {} release/ \;
 
           # Handle macOS app bundle separately
           if [ -d "artifacts/k8s-tray-macos" ]; then
             cd artifacts/k8s-tray-macos
-            if [ -d "dist" ]; then
-              # If there's an app bundle, create a zip for it
-              if ls dist/K8s*.app >/dev/null 2>&1; then
-                zip -r ../../release/k8s-tray-macos-app.zip dist/K8s*.app
-              fi
-              # Copy other macOS binaries
-              find dist -name "*darwin*" -type f -exec cp {} ../../release/ \;
+
+            # First, look for app bundle in dist directory
+            if [ -d "dist" ] && ls dist/K8s*.app >/dev/null 2>&1; then
+              zip -r ../../release/k8s-tray-macos-app.zip dist/K8s*.app
+              # Copy other macOS binaries from dist, excluding generic names
+              find dist -name "*darwin*" -type f -not -name "k8s-tray" -exec cp {} ../../release/ \;
+            # If no dist directory, look for app bundle in current directory
+            elif ls K8s*.app >/dev/null 2>&1; then
+              zip -r ../../release/k8s-tray-macos-app.zip K8s*.app
+              # Copy other macOS binaries from current directory, excluding generic names
+              find . -name "*darwin*" -type f -not -name "k8s-tray" -exec cp {} ../../release/ \;
+            # If still no app bundle found, check if there are any .app directories
+            elif find . -name "*.app" -type d | head -1 >/dev/null 2>&1; then
+              find . -name "*.app" -type d -exec zip -r ../../release/k8s-tray-macos-app.zip {} \;
+              # Copy other macOS binaries, excluding generic names
+              find . -name "*darwin*" -type f -not -name "k8s-tray" -exec cp {} ../../release/ \;
             else
-              # Fallback: copy everything
-              find . -type f -exec cp {} ../../release/ \;
+              echo "No macOS app bundle found"
+              # Still copy other macOS binaries, excluding generic names
+              find . -name "*darwin*" -type f -not -name "k8s-tray" -exec cp {} ../../release/ \;
             fi
+
             cd ../..
           fi
 
+          echo "=== Release directory contents ==="
           ls -la release/
 
       - name: Create checksums

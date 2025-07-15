@@ -6,8 +6,6 @@ name: Code Quality and Build
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  release:
-    types: [created]
 
 jobs:
   pre-commit:
@@ -162,7 +160,7 @@ jobs:
       - name: Create checksums
         run: |
           cd release
-          sha256sum * > checksums.txt
+          find . -type f -not -name "checksums.txt" -exec sha256sum {} \; > checksums.txt
           cat checksums.txt
 
       - name: Upload release assets
