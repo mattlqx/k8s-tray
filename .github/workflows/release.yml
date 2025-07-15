@@ -93,6 +93,70 @@ jobs:
       - name: Build for ${{ matrix.name }}
         run: make ${{ matrix.make_target }}
 
+      - name: Sign macOS app bundle
+        if: matrix.os == 'macos-latest'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+          MACOS_CI_KEYCHAIN_PWD: ${{ secrets.MACOS_CI_KEYCHAIN_PWD }}
+        run: |
+          # Turn our base64-encoded certificate back to a regular .p12 file
+          echo $MACOS_CERTIFICATE | base64 --decode > certificate.p12
+
+          # We need to create a new keychain, otherwise using the certificate will prompt
+          # with a UI dialog asking for the certificate password, which we can't
+          # use in a headless CI environment
+          security create-keychain -p "$MACOS_CI_KEYCHAIN_PWD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$MACOS_CI_KEYCHAIN_PWD" build.keychain
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_CI_KEYCHAIN_PWD" build.keychain
+
+          # Find the app bundle and sign it
+          APP_BUNDLE=$(find dist -name "*.app" -type d | head -1)
+          if [ -n "$APP_BUNDLE" ]; then
+            echo "Signing app bundle: $APP_BUNDLE"
+            /usr/bin/codesign --force -s "$MACOS_CERTIFICATE_NAME" --deep "$APP_BUNDLE" -v
+
+            # Verify the signature
+            /usr/bin/codesign -vvv --deep --strict "$APP_BUNDLE"
+            spctl -a -vvv "$APP_BUNDLE"
+          else
+            echo "No app bundle found to sign"
+          fi
+
+      - name: Notarize macOS app bundle
+        if: matrix.os == 'macos-latest'
+        env:
+          MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.MACOS_NOTARIZATION_APPLE_ID }}
+          MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+          MACOS_NOTARIZATION_PWD: ${{ secrets.MACOS_NOTARIZATION_PWD }}
+        run: |
+          APP_BUNDLE=$(find dist -name "*.app" -type d | head -1)
+          if [ -n "$APP_BUNDLE" ] && [ -n "$MACOS_NOTARIZATION_APPLE_ID" ]; then
+            echo "Notarizing app bundle: $APP_BUNDLE"
+
+            # Create a zip for notarization
+            ditto -c -k --keepParent "$APP_BUNDLE" "$APP_BUNDLE.zip"
+
+            # Submit for notarization
+            xcrun notarytool submit "$APP_BUNDLE.zip" \
+              --apple-id "$MACOS_NOTARIZATION_APPLE_ID" \
+              --team-id "$MACOS_NOTARIZATION_TEAM_ID" \
+              --password "$MACOS_NOTARIZATION_PWD" \
+              --wait
+
+            # Staple the ticket
+            xcrun stapler staple "$APP_BUNDLE"
+
+            # Verify notarization
+            xcrun stapler validate "$APP_BUNDLE"
+            spctl -a -vvv "$APP_BUNDLE"
+          else
+            echo "Skipping notarization - app bundle not found or notarization credentials not provided"
+          fi
+
       - name: List artifacts
         run: ls -la dist/
 
