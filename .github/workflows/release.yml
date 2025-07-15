@@ -125,25 +125,77 @@ jobs:
           security create-keychain -p "$MACOS_CI_KEYCHAIN_PWD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$MACOS_CI_KEYCHAIN_PWD" build.keychain
-          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+
+          # Import the certificate with proper trust settings
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -A
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_CI_KEYCHAIN_PWD" build.keychain
+
+          # Set the keychain search order
+          security list-keychains -d user -s build.keychain
+
+          # List available certificates for debugging
+          echo "=== Available certificates in keychain ==="
+          security find-identity -v -p codesigning build.keychain
+          echo "=== All identities in keychain ==="
+          security find-identity -v build.keychain
+
+          # Check certificate details more thoroughly
+          echo "=== Certificate details ==="
+          security find-certificate -a -p build.keychain | openssl x509 -text -noout | grep -E "(Subject|Issuer|Key Usage|Extended Key Usage|Certificate Policies)" || true
+
+          # Try to find the certificate name automatically
+          CERT_NAME=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+          if [ -n "$CERT_NAME" ]; then
+            echo "Found certificate: $CERT_NAME"
+            echo "Using certificate: $CERT_NAME"
+
+            # Check if it's actually a Developer ID certificate by looking at the certificate policies
+            CERT_POLICIES=$(security find-certificate -a -p build.keychain | openssl x509 -text -noout | grep -A 20 "Certificate Policies" | grep -o "1\.2\.840\.113635\.100\.6\.1\.[0-9]*" | head -1)
+            if [ "$CERT_POLICIES" = "1.2.840.113635.100.6.1.13" ]; then
+              echo "✓ Confirmed: This is a Developer ID Application certificate"
+            elif [ "$CERT_POLICIES" = "1.2.840.113635.100.6.1.2" ]; then
+              echo "✗ This is an Apple Development certificate - cannot be used for notarization"
+              exit 1
+            else
+              echo "⚠ Could not determine certificate type from policies, proceeding anyway"
+              echo "Certificate policies found: $CERT_POLICIES"
+            fi
+          else
+            echo "No valid code signing certificate found"
+            echo "Available identities:"
+            security find-identity -v build.keychain
+
+            # Show more detailed certificate information
+            echo "=== Detailed certificate information ==="
+            security find-certificate -a -c "Matt Kulka" -p build.keychain | openssl x509 -text -noout | head -50 || true
+
+            echo "ERROR: Could not find a valid code signing identity"
+            exit 1
+          fi
 
           # Find the app bundle and sign it
           APP_BUNDLE=$(find dist -name "*.app" -type d | head -1)
           if [ -n "$APP_BUNDLE" ]; then
             echo "Signing app bundle: $APP_BUNDLE"
 
-            # Sign the binary first
+            # Use the found certificate name or fall back to the secret
+            SIGNING_IDENTITY="${CERT_NAME:-$MACOS_CERTIFICATE_NAME}"
+            echo "Using signing identity: $SIGNING_IDENTITY"
+
+            # Sign the binary first with timestamp
             BINARY_PATH="$APP_BUNDLE/Contents/MacOS/k8s-tray"
             if [ -f "$BINARY_PATH" ]; then
               echo "Signing binary: $BINARY_PATH"
-              /usr/bin/codesign --force --options runtime --entitlements assets/entitlements.plist -s "$MACOS_CERTIFICATE_NAME" "$BINARY_PATH" -v
+              /usr/bin/codesign --force --options runtime --timestamp --entitlements assets/entitlements.plist -s "$SIGNING_IDENTITY" "$BINARY_PATH" -v
             fi
 
-            # Then sign the app bundle
-            /usr/bin/codesign --force --options runtime --entitlements assets/entitlements.plist -s "$MACOS_CERTIFICATE_NAME" "$APP_BUNDLE" -v
+            # Then sign the app bundle with timestamp
+            /usr/bin/codesign --force --options runtime --timestamp --entitlements assets/entitlements.plist -s "$SIGNING_IDENTITY" "$APP_BUNDLE" -v
 
             # Verify the signature
+            echo "=== Verifying binary signature ==="
+            /usr/bin/codesign -vvv --deep --strict "$BINARY_PATH"
+            echo "=== Verifying app bundle signature ==="
             /usr/bin/codesign -vvv --deep --strict "$APP_BUNDLE"
             echo "=== Code signature verification ==="
             /usr/bin/codesign -dvvv "$APP_BUNDLE"
@@ -153,6 +205,7 @@ jobs:
             spctl -a -vvv "$APP_BUNDLE" || echo "Note: Gatekeeper rejection is expected until notarization"
           else
             echo "No app bundle found to sign"
+            exit 1
           fi
 
       - name: Notarize macOS app bundle
@@ -163,28 +216,69 @@ jobs:
           MACOS_NOTARIZATION_PWD: ${{ secrets.MACOS_NOTARIZATION_PWD }}
         run: |
           APP_BUNDLE=$(find dist -name "*.app" -type d | head -1)
-          if [ -n "$APP_BUNDLE" ] && [ -n "$MACOS_NOTARIZATION_APPLE_ID" ]; then
-            echo "Notarizing app bundle: $APP_BUNDLE"
 
-            # Create a zip for notarization
-            ditto -c -k --keepParent "$APP_BUNDLE" "$APP_BUNDLE.zip"
-
-            # Submit for notarization
-            xcrun notarytool submit "$APP_BUNDLE.zip" \
-              --apple-id "$MACOS_NOTARIZATION_APPLE_ID" \
-              --team-id "$MACOS_NOTARIZATION_TEAM_ID" \
-              --password "$MACOS_NOTARIZATION_PWD" \
-              --wait
-
-            # Staple the ticket
-            xcrun stapler staple "$APP_BUNDLE"
-
-            # Verify notarization
-            xcrun stapler validate "$APP_BUNDLE"
-            spctl -a -vvv "$APP_BUNDLE"
-          else
-            echo "Skipping notarization - app bundle not found or notarization credentials not provided"
+          # Check if app bundle exists
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "ERROR: No app bundle found for notarization"
+            exit 1
           fi
+
+          # Check if notarization credentials are provided
+          if [ -z "$MACOS_NOTARIZATION_APPLE_ID" ] || [ -z "$MACOS_NOTARIZATION_TEAM_ID" ] || [ -z "$MACOS_NOTARIZATION_PWD" ]; then
+            echo "ERROR: Notarization credentials not provided"
+            echo "Required secrets: MACOS_NOTARIZATION_APPLE_ID, MACOS_NOTARIZATION_TEAM_ID, MACOS_NOTARIZATION_PWD"
+            exit 1
+          fi
+
+          echo "Notarizing app bundle: $APP_BUNDLE"
+
+          # Create a zip for notarization
+          ditto -c -k --keepParent "$APP_BUNDLE" "$APP_BUNDLE.zip"
+
+          # Submit for notarization and capture the result
+          echo "Submitting for notarization..."
+          SUBMISSION_ID=$(xcrun notarytool submit "$APP_BUNDLE.zip" \
+            --apple-id "$MACOS_NOTARIZATION_APPLE_ID" \
+            --team-id "$MACOS_NOTARIZATION_TEAM_ID" \
+            --password "$MACOS_NOTARIZATION_PWD" \
+            --wait \
+            --output-format json | jq -r '.id')
+
+          # Get the submission info to check status
+          echo "Checking notarization status..."
+          xcrun notarytool info "$SUBMISSION_ID" \
+            --apple-id "$MACOS_NOTARIZATION_APPLE_ID" \
+            --team-id "$MACOS_NOTARIZATION_TEAM_ID" \
+            --password "$MACOS_NOTARIZATION_PWD"
+
+          # Get the submission log for debugging
+          echo "Getting notarization log..."
+          xcrun notarytool log "$SUBMISSION_ID" \
+            --apple-id "$MACOS_NOTARIZATION_APPLE_ID" \
+            --team-id "$MACOS_NOTARIZATION_TEAM_ID" \
+            --password "$MACOS_NOTARIZATION_PWD"
+
+          # Check if notarization was successful
+          STATUS=$(xcrun notarytool info "$SUBMISSION_ID" \
+            --apple-id "$MACOS_NOTARIZATION_APPLE_ID" \
+            --team-id "$MACOS_NOTARIZATION_TEAM_ID" \
+            --password "$MACOS_NOTARIZATION_PWD" \
+            --output-format json | jq -r '.status')
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "ERROR: Notarization failed with status: $STATUS"
+            echo "Check the log output above for details"
+            exit 1
+          fi
+
+          # Staple the ticket
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$APP_BUNDLE"
+
+          # Verify notarization
+          echo "Verifying notarization..."
+          xcrun stapler validate "$APP_BUNDLE"
+          spctl -a -vvv "$APP_BUNDLE"
 
       - name: List artifacts
         run: ls -la dist/
@@ -261,6 +355,7 @@ jobs:
         run: |
           echo "Debug: Version from needs: ${{ needs.determine-version.outputs.version }}"
           echo "Debug: Tag from needs: ${{ needs.determine-version.outputs.tag }}"
+          echo "Debug: Increment from needs: ${{ needs.determine-version.outputs.increment }}"
 
           # Set the tag variable with fallback
           TAG="${{ needs.determine-version.outputs.tag }}"
@@ -270,6 +365,27 @@ jobs:
 
           echo "Using tag: $TAG"
 
+          # Check if this is actually a new version (increment should not be 'none')
+          INCREMENT="${{ needs.determine-version.outputs.increment }}"
+          if [ "$INCREMENT" = "none" ]; then
+            echo "No version increment needed - skipping tag creation"
+            echo "Current version ${{ needs.determine-version.outputs.version }} already exists"
+            exit 0
+          fi
+
+          # Check if tag already exists
+          if git tag -l "$TAG" | grep -q "^$TAG$"; then
+            echo "Tag $TAG already exists locally - skipping tag creation"
+            exit 0
+          fi
+
+          # Check if tag exists on remote
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG$"; then
+            echo "Tag $TAG already exists on remote - skipping tag creation"
+            exit 0
+          fi
+
+          echo "Creating new tag: $TAG"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Release ${{ needs.determine-version.outputs.version }}"
@@ -277,37 +393,45 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ !github.event.inputs.dry_run }}
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.determine-version.outputs.tag || format('v{0}', needs.determine-version.outputs.version) }}
-          name: Release ${{ needs.determine-version.outputs.version }}
-          files: |
+        run: |
+          # Check if this is actually a new version
+          INCREMENT="${{ needs.determine-version.outputs.increment }}"
+          if [ "$INCREMENT" = "none" ]; then
+            echo "No version increment - skipping GitHub release creation"
+            exit 0
+          fi
+
+          # Set the tag variable with fallback
+          TAG="${{ needs.determine-version.outputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="v${{ needs.determine-version.outputs.version }}"
+          fi
+
+          echo "Creating GitHub release for tag: $TAG"
+
+          # Use gh CLI to create the release
+          gh release create "$TAG" \
+            --title "Release ${{ needs.determine-version.outputs.version }}" \
+            --notes "## Release ${{ needs.determine-version.outputs.version }}
+
+          ### Downloads
+          - **Linux**: \`k8s-tray-linux-amd64\`, \`k8s-tray-linux-arm64\`
+          - **macOS**: \`k8s-tray-darwin-amd64\`, \`k8s-tray-darwin-arm64\`,
+            \`k8s-tray-darwin-universal\`, \`k8s-tray-macos-app.zip\`
+          - **Windows**: \`k8s-tray-windows-amd64.exe\`,
+            \`k8s-tray-windows-arm64.exe\`
+
+          ### Verification
+          Use the included \`checksums.txt\` to verify download integrity:
+          \`\`\`bash
+          sha256sum -c checksums.txt
+          \`\`\`
+
+          ### Installation
+          1. Download the appropriate binary for your platform
+          2. Make it executable (Linux/macOS): \`chmod +x k8s-tray-*\`
+          3. Run the binary or install the app bundle (macOS)" \
+            --generate-notes \
             release/*
-          generate_release_notes: true
-          draft: false
-          prerelease: >-
-            ${{
-              contains(needs.determine-version.outputs.tag, 'rc') ||
-              contains(needs.determine-version.outputs.tag, 'beta') ||
-              contains(needs.determine-version.outputs.tag, 'alpha')
-            }}
-          body: |
-            ## Release ${{ needs.determine-version.outputs.version }}
-
-            ### Downloads
-            - **Linux**: `k8s-tray-linux-amd64`, `k8s-tray-linux-arm64`
-            - **macOS**: `k8s-tray-darwin-amd64`, `k8s-tray-darwin-arm64`,
-              `k8s-tray-darwin-universal`, `k8s-tray-macos-app.zip`
-            - **Windows**: `k8s-tray-windows-amd64.exe`,
-              `k8s-tray-windows-arm64.exe`
-
-            ### Verification
-            Use the included `checksums.txt` to verify download integrity:
-            ```bash
-            sha256sum -c checksums.txt
-            ```
-
-            ### Installation
-            1. Download the appropriate binary for your platform
-            2. Make it executable (Linux/macOS): `chmod +x k8s-tray-*`
-            3. Run the binary or install the app bundle (macOS)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
