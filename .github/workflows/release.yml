@@ -40,6 +40,8 @@ jobs:
           version_format: "${major}.${minor}.${patch}"
           search_commit_body: false
           user_format_type: "csv"
+          # Enable debugging
+          debug: true
 
       - name: Show determined version
         run: |
@@ -51,6 +53,25 @@ jobs:
           echo "  tag: '${{ steps.semver.outputs.tag }}'"
           echo "  version_tag: '${{ steps.semver.outputs.version_tag }}'"
           echo "  increment: '${{ steps.semver.outputs.increment }}'"
+          echo "  previous_version: '${{ steps.semver.outputs.previous_version }}'"
+          echo "  previous_tag: '${{ steps.semver.outputs.previous_tag }}'"
+
+          # Debug git tag information
+          echo "=== Git tag debugging ==="
+          echo "All tags in repository:"
+          git tag -l --sort=-version:refname | head -10
+          echo "Latest tag with v prefix:"
+          git tag -l "v*" --sort=-version:refname | head -5
+          echo "Recent commits:"
+          git log --oneline -10
+          echo "Commits since last tag:"
+          LATEST_TAG=$(git tag -l "v*" --sort=-version:refname | head -1)
+          if [ -n "$LATEST_TAG" ]; then
+            echo "Latest tag: $LATEST_TAG"
+            git log --oneline "$LATEST_TAG"..HEAD || echo "No commits since $LATEST_TAG"
+          else
+            echo "No tags found"
+          fi
 
   build-release:
     needs: determine-version
@@ -351,6 +372,7 @@ jobs:
           cat checksums.txt
 
       - name: Create and push tag
+        id: create_tag
         if: ${{ !github.event.inputs.dry_run }}
         run: |
           echo "Debug: Version from needs: ${{ needs.determine-version.outputs.version }}"
@@ -370,18 +392,28 @@ jobs:
           if [ "$INCREMENT" = "none" ]; then
             echo "No version increment needed - skipping tag creation"
             echo "Current version ${{ needs.determine-version.outputs.version }} already exists"
+            echo "tag_created=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Check if tag already exists
-          if git tag -l "$TAG" | grep -q "^$TAG$"; then
-            echo "Tag $TAG already exists locally - skipping tag creation"
-            exit 0
-          fi
-
-          # Check if tag exists on remote
+          # Check if tag already exists on remote first (most reliable)
           if git ls-remote --tags origin | grep -q "refs/tags/$TAG$"; then
             echo "Tag $TAG already exists on remote - skipping tag creation"
+            echo "tag_created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if tag already exists locally
+          if git tag -l "$TAG" | grep -q "^$TAG$"; then
+            echo "Tag $TAG already exists locally - skipping tag creation"
+            echo "tag_created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if GitHub release already exists
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists - skipping tag creation"
+            echo "tag_created=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -390,17 +422,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Release ${{ needs.determine-version.outputs.version }}"
           git push origin "$TAG"
+          echo "tag_created=true" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        if: ${{ !github.event.inputs.dry_run }}
+        if: ${{ !github.event.inputs.dry_run && steps.create_tag.outputs.tag_created == 'true' }}
         run: |
-          # Check if this is actually a new version
-          INCREMENT="${{ needs.determine-version.outputs.increment }}"
-          if [ "$INCREMENT" = "none" ]; then
-            echo "No version increment - skipping GitHub release creation"
-            exit 0
-          fi
-
           # Set the tag variable with fallback
           TAG="${{ needs.determine-version.outputs.tag }}"
           if [ -z "$TAG" ]; then
