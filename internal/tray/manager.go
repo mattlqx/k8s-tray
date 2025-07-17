@@ -362,7 +362,6 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 	m.statusItem.SetTitle(fmt.Sprintf("Status: %s", status.HealthStatus.String()))
 	m.clusterItem.SetTitle(fmt.Sprintf("Cluster: %s (%s)", status.ClusterName, status.ServerVersion))
 	m.namespaceItem.SetTitle(fmt.Sprintf("Namespace: %s", namespaceDisplay))
-	m.podsItem.SetTitle(fmt.Sprintf("Pods: %d total", status.PodStatus.Total))
 
 	// Update resource stats if enabled and available
 	if m.config.ShowMetrics && status.Resources != nil {
@@ -379,6 +378,8 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 				status.Resources.Memory.Percentage))
 		}
 	}
+
+	m.podsItem.SetTitle(fmt.Sprintf("Pods: %d total", status.PodStatus.Total))
 
 	// Update individual pod status items with visual indicators
 	m.podsReadyItem.SetTitle(fmt.Sprintf("  🟢 Ready: %d", status.PodStatus.RunningReady))
