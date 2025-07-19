@@ -657,6 +657,9 @@ func (m *Manager) switchNamespace(ctx context.Context, namespace string) {
 		log.Printf("Failed to save config: %v", err)
 	}
 
+	// Clear pod submenus to avoid showing stale pod data from the old namespace
+	m.clearPodSubmenus()
+
 	// Refresh status
 	m.refreshStatus(ctx)
 
@@ -701,6 +704,9 @@ func (m *Manager) switchContext(ctx context.Context, contextName string) {
 	// Update the client
 	m.k8sClient = newClient
 
+	// Reset all menu items to prevent showing stale data from the old context
+	m.resetMenuState()
+
 	// Refresh status
 	m.refreshStatus(ctx)
 
@@ -708,6 +714,50 @@ func (m *Manager) switchContext(ctx context.Context, contextName string) {
 	go m.refreshNamespaceMenu(ctx)
 
 	log.Printf("Switched to context: %s", contextName)
+}
+
+// resetMenuState resets all menu items to their initial/loading state
+func (m *Manager) resetMenuState() {
+	// Reset main status items to loading state
+	m.statusItem.SetTitle("Status: Connecting...")
+	m.clusterItem.SetTitle("Cluster: Unknown")
+	m.namespaceItem.SetTitle("Namespace: Loading...")
+	m.podsItem.SetTitle("Pods: Loading...")
+
+	// Reset resource items if they exist
+	if m.cpuItem != nil {
+		m.cpuItem.SetTitle("CPU: Loading...")
+	}
+	if m.memoryItem != nil {
+		m.memoryItem.SetTitle("Memory: Loading...")
+	}
+
+	// Reset pod status items
+	m.podsReadyItem.SetTitle("  🟢 Ready: 0")
+	m.podsNotReadyItem.SetTitle("  🛑 Not Ready: 0")
+	m.podsPendingItem.SetTitle("  ⏳ Pending: 0")
+	m.podsCompletedItem.SetTitle("  ✅ Completed: 0")
+	m.podsFailedItem.SetTitle("  ❌ Failed: 0")
+
+	// Hide all pod status items initially
+	m.podsReadyItem.Hide()
+	m.podsNotReadyItem.Hide()
+	m.podsPendingItem.Hide()
+	m.podsCompletedItem.Hide()
+	m.podsFailedItem.Hide()
+
+	// Clear all pod submenus
+	m.clearPodSubmenus()
+
+	// Reset tooltip
+	systray.SetTooltip("K8s Tray - Connecting...")
+
+	// Reset icon to unknown state
+	m.updateIcon(models.HealthUnknown)
+	m.currentHealth = models.HealthUnknown
+
+	// Clear current status
+	m.currentStatus = nil
 }
 
 // showWindowsHelp displays Windows-specific help information in the log/console
