@@ -125,6 +125,7 @@ sign_app_bundle() {
     print_info "Signing app bundle with identity: $identity"
 
     # Sign the binary first
+    chmod 755 "$app_bundle_path/Contents/MacOS/$BINARY_NAME"
     codesign --force --sign "$identity" "$app_bundle_path/Contents/MacOS/$BINARY_NAME"
 
     # Sign the app bundle

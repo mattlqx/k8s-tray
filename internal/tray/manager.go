@@ -179,9 +179,6 @@ func (m *Manager) buildMenu() {
 	m.namespaceItem = systray.AddMenuItem("Namespace: "+namespaceDisplay, "Current namespace")
 	m.namespaceItem.Disable()
 
-	m.podsItem = systray.AddMenuItem("Pods: Loading...", "Pod status summary")
-	m.podsItem.Disable()
-
 	// Resource usage items (only show if metrics are enabled)
 	if m.config.ShowMetrics {
 		m.cpuItem = systray.AddMenuItem("CPU: Loading...", "CPU usage across all cluster nodes")
@@ -190,6 +187,9 @@ func (m *Manager) buildMenu() {
 		m.memoryItem = systray.AddMenuItem("Memory: Loading...", "Memory usage across all cluster nodes")
 		m.memoryItem.Disable()
 	}
+
+	m.podsItem = systray.AddMenuItem("Pods: Loading...", "Pod status summary")
+	m.podsItem.Disable()
 
 	// Individual pod status items with better tooltips
 	m.podsReadyItem = systray.AddMenuItem("  🟢 Ready: 0", "Pods that are running and all containers are ready")
@@ -722,7 +722,6 @@ func (m *Manager) resetMenuState() {
 	m.statusItem.SetTitle("Status: Connecting...")
 	m.clusterItem.SetTitle("Cluster: Unknown")
 	m.namespaceItem.SetTitle("Namespace: Loading...")
-	m.podsItem.SetTitle("Pods: Loading...")
 
 	// Reset resource items if they exist
 	if m.cpuItem != nil {
@@ -733,6 +732,7 @@ func (m *Manager) resetMenuState() {
 	}
 
 	// Reset pod status items
+	m.podsItem.SetTitle("Pods: Loading...")
 	m.podsReadyItem.SetTitle("  🟢 Ready: 0")
 	m.podsNotReadyItem.SetTitle("  🛑 Not Ready: 0")
 	m.podsPendingItem.SetTitle("  ⏳ Pending: 0")
