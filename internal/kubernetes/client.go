@@ -109,7 +109,9 @@ func (c *Client) GetPodStatus(ctx context.Context, namespace string) (*models.Po
 	}
 
 	// List pods in namespace
-	pods, err := c.clientset.CoreV1().Pods(queryNamespace).List(ctx, metav1.ListOptions{})
+	pods, err := c.clientset.CoreV1().Pods(queryNamespace).List(ctx, metav1.ListOptions{
+		ResourceVersion: "0",
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
@@ -164,7 +166,9 @@ func (c *Client) GetPodStatus(ctx context.Context, namespace string) (*models.Po
 
 // GetAllNamespaces returns all namespaces in the cluster
 func (c *Client) GetAllNamespaces(ctx context.Context) ([]string, error) {
-	namespaces, err := c.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	namespaces, err := c.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
+		ResourceVersion: "0",
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list namespaces: %w", err)
 	}
@@ -188,7 +192,8 @@ func (c *Client) GetEvents(ctx context.Context, namespace string) ([]models.Even
 	}
 
 	events, err := c.clientset.CoreV1().Events(queryNamespace).List(ctx, metav1.ListOptions{
-		Limit: 50,
+		Limit:           50,
+		ResourceVersion: "0",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list events: %w", err)
@@ -220,7 +225,9 @@ func (c *Client) TestConnection(ctx context.Context) error {
 // GetResourceStats returns cluster resource statistics (CPU and Memory)
 func (c *Client) GetResourceStats(ctx context.Context) (*models.ResourceStats, error) {
 	// Get all nodes
-	nodes, err := c.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	nodes, err := c.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
+		ResourceVersion: "0",
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -279,7 +286,9 @@ func (c *Client) GetResourceStats(ctx context.Context) (*models.ResourceStats, e
 // calculateResourceUsage calculates the total resource requests from all pods
 func (c *Client) calculateResourceUsage(ctx context.Context) (float64, float64, error) {
 	// Get all pods in all namespaces
-	pods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	pods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+		ResourceVersion: "0",
+	})
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to list pods: %w", err)
 	}
