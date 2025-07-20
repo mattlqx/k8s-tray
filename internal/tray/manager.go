@@ -339,11 +339,8 @@ func (m *Manager) refreshStatus(ctx context.Context) {
 
 // updateDisplay updates the tray display with current status
 func (m *Manager) updateDisplay(status *models.ClusterStatus) {
-	// Update icon if health status changed
-	if status.HealthStatus != m.currentHealth {
-		m.updateIcon(status.HealthStatus)
-		m.currentHealth = status.HealthStatus
-	}
+	m.currentHealth = status.HealthStatus
+	m.updateIcon(status.HealthStatus)
 
 	// Get display name for namespace
 	namespaceDisplay := m.config.Namespace
