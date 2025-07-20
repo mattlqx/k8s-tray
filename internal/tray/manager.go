@@ -41,6 +41,7 @@ type Manager struct {
 	podsCompletedItem *systray.MenuItem
 	podsFailedItem    *systray.MenuItem
 	refreshItem       *systray.MenuItem
+	dataAgeItem       *systray.MenuItem
 	helpItem          *systray.MenuItem
 	quitItem          *systray.MenuItem
 
@@ -68,8 +69,13 @@ type Manager struct {
 	intervalChanged chan time.Duration
 
 	// Current state
-	currentStatus *models.ClusterStatus
-	currentHealth models.HealthStatus
+	currentStatus   *models.ClusterStatus
+	currentHealth   models.HealthStatus
+	lastRefreshTime time.Time
+
+	// Context cancellation for ongoing requests
+	monitoringCtx    context.Context
+	monitoringCancel context.CancelFunc
 
 	// Windows-specific visibility helper
 	showVisibilityHint bool
@@ -98,6 +104,9 @@ func NewManager(k8sClient *kubernetes.Client, cfg *config.Config) *Manager {
 func (m *Manager) OnReady(ctx context.Context) {
 	log.Printf("Tray manager OnReady called")
 
+	// Initialize monitoring context - this will be used for all client requests
+	m.monitoringCtx, m.monitoringCancel = context.WithCancel(ctx)
+
 	// Set initial icon and tooltip
 	m.updateIcon(models.HealthUnknown)
 	systray.SetTooltip("K8s Tray - Connecting...")
@@ -110,22 +119,22 @@ func (m *Manager) OnReady(ctx context.Context) {
 	log.Printf("Built menu")
 
 	// Initialize namespace menu
-	go m.refreshNamespaceMenu(ctx)
+	go m.refreshNamespaceMenu(m.monitoringCtx)
 
 	log.Printf("Initialized namespace menu")
 
 	// Initialize context menu
-	go m.refreshContextMenu(ctx)
+	go m.refreshContextMenu(m.monitoringCtx)
 
 	log.Printf("Initialized context menu")
 
 	// Initialize settings menu
-	go m.refreshSettingsMenu(ctx)
+	go m.refreshSettingsMenu(m.monitoringCtx)
 
 	log.Printf("Initialized settings menu")
 
 	// Start monitoring
-	go m.startMonitoring(ctx)
+	go m.startMonitoring(m.monitoringCtx)
 
 	log.Printf("Started monitoring")
 
@@ -159,6 +168,11 @@ func (m *Manager) showWindowsVisibilityHint() {
 // OnExit is called when the systray is exiting
 func (m *Manager) OnExit() {
 	log.Println("Tray exiting...")
+
+	// Cancel any ongoing monitoring operations
+	if m.monitoringCancel != nil {
+		m.monitoringCancel()
+	}
 }
 
 // buildMenu builds the system tray menu
@@ -219,6 +233,8 @@ func (m *Manager) buildMenu() {
 
 	// Actions
 	m.refreshItem = systray.AddMenuItem("Refresh", "Refresh cluster status")
+	m.dataAgeItem = systray.AddMenuItem("Data Age: Unknown", "Time since last successful refresh")
+	m.dataAgeItem.Disable()
 	m.settingsMenu = systray.AddMenuItem("Settings", "Application settings")
 
 	// Add help for Windows users
@@ -238,16 +254,16 @@ func (m *Manager) handleMenuActions(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-m.refreshItem.ClickedCh:
-			go m.refreshStatus(ctx)
+			go m.refreshStatus(m.monitoringCtx)
 		case <-m.quitItem.ClickedCh:
 			systray.Quit()
 			return
 		case <-m.namespaceMenu.ClickedCh:
-			go m.refreshNamespaceMenu(ctx)
+			go m.refreshNamespaceMenu(m.monitoringCtx)
 		case <-m.contextMenu.ClickedCh:
-			go m.refreshContextMenu(ctx)
+			go m.refreshContextMenu(m.monitoringCtx)
 		case <-m.settingsMenu.ClickedCh:
-			go m.refreshSettingsMenu(ctx)
+			go m.refreshSettingsMenu(m.monitoringCtx)
 		case <-m.podsReadyItem.ClickedCh:
 			// Pod status items are now clickable but we don't need to do anything
 			// The submenus will be handled automatically by the systray library
@@ -281,12 +297,19 @@ func (m *Manager) startMonitoring(ctx context.Context) {
 	ticker := time.NewTicker(m.config.PollInterval)
 	defer ticker.Stop()
 
+	// Set up a separate ticker for updating data age more frequently (every 10 seconds)
+	dataAgeTicker := time.NewTicker(10 * time.Second)
+	defer dataAgeTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			m.refreshStatus(ctx)
+		case <-dataAgeTicker.C:
+			// Update data age display more frequently than full refresh
+			m.updateDataAge()
 		case newInterval := <-m.intervalChanged:
 			// Reset ticker with new interval
 			ticker.Stop()
@@ -306,6 +329,9 @@ func (m *Manager) refreshStatus(ctx context.Context) {
 	}
 
 	log.Printf("Refreshed cluster status... %+v", status.PodStatus)
+
+	// Record the time of successful refresh
+	m.lastRefreshTime = time.Now()
 
 	m.currentStatus = status
 	m.updateDisplay(status)
@@ -381,6 +407,9 @@ func (m *Manager) updateDisplay(status *models.ClusterStatus) {
 
 	m.podsItem.SetTitle(fmt.Sprintf("Pods: %d total", status.PodStatus.Total))
 
+	// Update data age
+	m.updateDataAge()
+
 	// Update individual pod status items with visual indicators
 	m.podsReadyItem.SetTitle(fmt.Sprintf("  🟢 Ready: %d", status.PodStatus.RunningReady))
 	m.podsNotReadyItem.SetTitle(fmt.Sprintf("  🛑 Not Ready: %d", status.PodStatus.RunningNotReady))
@@ -424,6 +453,33 @@ func (m *Manager) updateError(err error) {
 	m.updateIcon(models.HealthCritical)
 	systray.SetTooltip(fmt.Sprintf("K8s Tray - Error: %v", err))
 	m.statusItem.SetTitle(fmt.Sprintf("Status: Error - %v", err))
+
+	// Update data age even when there's an error
+	m.updateDataAge()
+}
+
+// updateDataAge updates the data age menu item
+func (m *Manager) updateDataAge() {
+	if m.lastRefreshTime.IsZero() {
+		m.dataAgeItem.SetTitle("Data Age: Unknown")
+		return
+	}
+
+	age := time.Since(m.lastRefreshTime)
+	var ageStr string
+
+	switch {
+	case age < time.Minute:
+		ageStr = fmt.Sprintf("%.0fs ago", age.Seconds())
+	case age < time.Hour:
+		ageStr = fmt.Sprintf("%.0fm ago", age.Minutes())
+	case age < 24*time.Hour:
+		ageStr = fmt.Sprintf("%.1fh ago", age.Hours())
+	default:
+		ageStr = fmt.Sprintf("%.1fd ago", age.Hours()/24)
+	}
+
+	m.dataAgeItem.SetTitle(fmt.Sprintf("Data Age: %s", ageStr))
 }
 
 // updateIcon updates the tray icon based on health status
@@ -480,7 +536,7 @@ func (m *Manager) refreshNamespaceMenu(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-allItem.ClickedCh:
-				m.switchNamespace(ctx, config.AllNamespaces)
+				m.switchNamespace(config.AllNamespaces)
 			}
 		}
 	}()
@@ -506,7 +562,7 @@ func (m *Manager) refreshNamespaceMenu(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case <-menuItem.ClickedCh:
-					m.switchNamespace(ctx, namespace)
+					m.switchNamespace(namespace)
 				}
 			}
 		}(ns, item)
@@ -638,7 +694,7 @@ func (m *Manager) setRefreshInterval(_ context.Context, interval time.Duration) 
 }
 
 // switchNamespace switches to a different namespace
-func (m *Manager) switchNamespace(ctx context.Context, namespace string) {
+func (m *Manager) switchNamespace(namespace string) {
 	// Uncheck previous selection
 	if prevItem, exists := m.namespaceItems[m.config.Namespace]; exists {
 		prevItem.Uncheck()
@@ -661,7 +717,7 @@ func (m *Manager) switchNamespace(ctx context.Context, namespace string) {
 	m.clearPodSubmenus()
 
 	// Refresh status
-	m.refreshStatus(ctx)
+	m.refreshStatus(m.monitoringCtx)
 
 	log.Printf("Switched to namespace: %s", namespace)
 }
@@ -704,14 +760,23 @@ func (m *Manager) switchContext(ctx context.Context, contextName string) {
 	// Update the client
 	m.k8sClient = newClient
 
+	// Cancel any existing monitoring operations to prevent stale data updates
+	if m.monitoringCancel != nil {
+		log.Printf("Cancelling existing monitoring operations for context switch")
+		m.monitoringCancel()
+	}
+
+	// Create new monitoring context for the new cluster context
+	m.monitoringCtx, m.monitoringCancel = context.WithCancel(ctx)
+
 	// Reset all menu items to prevent showing stale data from the old context
 	m.resetMenuState()
 
-	// Refresh status
-	m.refreshStatus(ctx)
+	// Refresh status with new context
+	m.refreshStatus(m.monitoringCtx)
 
 	// Refresh namespace menu since we switched clusters
-	go m.refreshNamespaceMenu(ctx)
+	go m.refreshNamespaceMenu(m.monitoringCtx)
 
 	log.Printf("Switched to context: %s", contextName)
 }
@@ -758,6 +823,10 @@ func (m *Manager) resetMenuState() {
 
 	// Clear current status
 	m.currentStatus = nil
+
+	// Reset refresh time and data age
+	m.lastRefreshTime = time.Time{}
+	m.dataAgeItem.SetTitle("Data Age: Unknown")
 }
 
 // showWindowsHelp displays Windows-specific help information in the log/console
