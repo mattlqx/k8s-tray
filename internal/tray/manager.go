@@ -76,6 +76,7 @@ type Manager struct {
 	// Context cancellation for ongoing requests
 	monitoringCtx    context.Context
 	monitoringCancel context.CancelFunc
+	mainCtx          context.Context
 
 	// Windows-specific visibility helper
 	showVisibilityHint bool
@@ -103,9 +104,10 @@ func NewManager(k8sClient *kubernetes.Client, cfg *config.Config) *Manager {
 // OnReady is called when the systray is ready
 func (m *Manager) OnReady(ctx context.Context) {
 	log.Printf("Tray manager OnReady called")
+	m.mainCtx = ctx
 
 	// Initialize monitoring context - this will be used for all client requests
-	m.monitoringCtx, m.monitoringCancel = context.WithCancel(ctx)
+	m.monitoringCtx, m.monitoringCancel = context.WithCancel(m.mainCtx)
 
 	// Set initial icon and tooltip
 	m.updateIcon(models.HealthUnknown)
@@ -119,17 +121,17 @@ func (m *Manager) OnReady(ctx context.Context) {
 	log.Printf("Built menu")
 
 	// Initialize namespace menu
-	go m.refreshNamespaceMenu(m.monitoringCtx)
+	go m.refreshNamespaceMenu(m.mainCtx)
 
 	log.Printf("Initialized namespace menu")
 
 	// Initialize context menu
-	go m.refreshContextMenu(m.monitoringCtx)
+	go m.refreshContextMenu(m.mainCtx)
 
 	log.Printf("Initialized context menu")
 
 	// Initialize settings menu
-	go m.refreshSettingsMenu(m.monitoringCtx)
+	go m.refreshSettingsMenu(m.mainCtx)
 
 	log.Printf("Initialized settings menu")
 
@@ -139,7 +141,7 @@ func (m *Manager) OnReady(ctx context.Context) {
 	log.Printf("Started monitoring")
 
 	// Handle menu actions
-	go m.handleMenuActions(ctx)
+	go m.handleMenuActions(m.mainCtx)
 
 	log.Printf("Started menu action handler")
 
@@ -254,16 +256,19 @@ func (m *Manager) handleMenuActions(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-m.refreshItem.ClickedCh:
-			go m.refreshStatus(m.monitoringCtx)
+			// Rebuild monitoring loop
+			m.monitoringCancel()
+			m.monitoringCtx, m.monitoringCancel = context.WithCancel(ctx)
+			go m.startMonitoring(m.monitoringCtx)
 		case <-m.quitItem.ClickedCh:
 			systray.Quit()
 			return
 		case <-m.namespaceMenu.ClickedCh:
-			go m.refreshNamespaceMenu(m.monitoringCtx)
+			go m.refreshNamespaceMenu(ctx)
 		case <-m.contextMenu.ClickedCh:
-			go m.refreshContextMenu(m.monitoringCtx)
+			go m.refreshContextMenu(ctx)
 		case <-m.settingsMenu.ClickedCh:
-			go m.refreshSettingsMenu(m.monitoringCtx)
+			go m.refreshSettingsMenu(ctx)
 		case <-m.podsReadyItem.ClickedCh:
 			// Pod status items are now clickable but we don't need to do anything
 			// The submenus will be handled automatically by the systray library
@@ -604,7 +609,7 @@ func (m *Manager) refreshContextMenu(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case <-menuItem.ClickedCh:
-					m.switchContext(ctx, context)
+					m.switchContext(context)
 				}
 			}
 		}(contextName, item)
@@ -720,7 +725,7 @@ func (m *Manager) switchNamespace(namespace string) {
 }
 
 // switchContext switches to a different context
-func (m *Manager) switchContext(ctx context.Context, contextName string) {
+func (m *Manager) switchContext(contextName string) {
 	// Uncheck previous selection
 	currentContext, _ := m.k8sClient.GetCurrentContext()
 	if m.config.Context == "" {
@@ -764,16 +769,16 @@ func (m *Manager) switchContext(ctx context.Context, contextName string) {
 	}
 
 	// Create new monitoring context for the new cluster context
-	m.monitoringCtx, m.monitoringCancel = context.WithCancel(ctx)
+	m.monitoringCtx, m.monitoringCancel = context.WithCancel(m.mainCtx)
 
 	// Reset all menu items to prevent showing stale data from the old context
 	m.resetMenuState()
 
-	// Refresh status with new context
-	m.refreshStatus(m.monitoringCtx)
+	// Restart monitoring with the new context
+	go m.startMonitoring(m.monitoringCtx)
 
 	// Refresh namespace menu since we switched clusters
-	go m.refreshNamespaceMenu(m.monitoringCtx)
+	go m.refreshNamespaceMenu(m.mainCtx)
 
 	log.Printf("Switched to context: %s", contextName)
 }
