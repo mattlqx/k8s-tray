@@ -1,5 +1,5 @@
 # Makefile for k8s-tray
-.PHONY: setup-dev lint test format pre-commit-install build build-darwin build-darwin-universal build-darwin-app build-app-from-binary test-app-bundle deploy-macos test-ssh build-linux build-windows build-native-only build-all build-all-with-app cross-compile cross-info setup-osxcross clean run help
+.PHONY: setup-dev lint test format pre-commit-install build build-darwin build-darwin-universal build-darwin-app build-app-from-binary test-app-bundle deploy-macos test-ssh build-linux build-windows build-native-only build-all build-all-with-app cross-compile cross-info setup-osxcross clean run help icons icons-common icons-windows icons-macos icons-linux copy-icons copy-icons-png
 
 # Variables
 BINARY_NAME=k8s-tray
@@ -8,11 +8,74 @@ CMD_DIR=cmd
 MAIN_FILE=$(CMD_DIR)/main.go
 LDFLAGS=-w -s
 BUILD_FLAGS=-ldflags="$(LDFLAGS)"
+ASSETS_DIR=assets
+
+# Icon files
+ICON_SVG=$(ASSETS_DIR)/icon.svg
+ICON_ICO=$(ASSETS_DIR)/icon.ico
+ICON_PNG_256=$(ASSETS_DIR)/icon-256.png
+ICON_PNG_512=$(ASSETS_DIR)/icon-512.png
+ICON_ICNS=$(ASSETS_DIR)/AppIcon.icns
+ICONSET_DIR=$(ASSETS_DIR)/AppIcon.iconset
+RESOURCE_SYSO=$(CMD_DIR)/app.syso
 
 # Default target
 help: ## Show this help message
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+icons: icons-common ## Generate all application icons from SVG
+
+icons-common: $(ICON_PNG_256) $(ICON_PNG_512) ## Generate common icons (PNG files)
+
+icons-windows: icons-common $(ICON_ICO) $(RESOURCE_SYSO) ## Generate Windows-specific icons
+
+icons-macos: icons-common $(ICON_ICNS) ## Generate macOS-specific icons
+
+icons-linux: icons-common ## Generate Linux-specific icons (same as common)
+
+$(ICON_PNG_256): $(ICON_SVG)
+	@echo "Generating 256x256 PNG icon..."
+	@convert $(ICON_SVG) -background transparent -resize 256x256 $(ICON_PNG_256)
+
+$(ICON_PNG_512): $(ICON_SVG)
+	@echo "Generating 512x512 PNG icon..."
+	@convert $(ICON_SVG) -background transparent -resize 512x512 $(ICON_PNG_512)
+
+$(ICON_ICO): $(ICON_SVG)
+	@echo "Generating Windows ICO icon..."
+	@convert $(ICON_SVG) -background transparent \( -clone 0 -resize 256x256 \) \( -clone 0 -resize 128x128 \) \( -clone 0 -resize 64x64 \) \( -clone 0 -resize 48x48 \) \( -clone 0 -resize 32x32 \) \( -clone 0 -resize 16x16 \) -delete 0 $(ICON_ICO)
+
+$(RESOURCE_SYSO): $(ASSETS_DIR)/app.rc $(ICON_ICO)
+	@echo "Compiling Windows resource file..."
+	@if command -v x86_64-w64-mingw32-windres >/dev/null 2>&1; then \
+		cd $(ASSETS_DIR) && x86_64-w64-mingw32-windres -i app.rc -o ../$(RESOURCE_SYSO); \
+	else \
+		echo "Warning: x86_64-w64-mingw32-windres not found, skipping resource compilation"; \
+		touch $(RESOURCE_SYSO); \
+	fi
+
+$(ICON_ICNS): $(ICON_SVG)
+	@echo "Generating macOS iconset..."
+	@mkdir -p $(ICONSET_DIR)
+	@convert $(ICON_SVG) -background transparent -resize 16x16 $(ICONSET_DIR)/icon_16x16.png
+	@convert $(ICON_SVG) -background transparent -resize 32x32 $(ICONSET_DIR)/icon_16x16@2x.png
+	@convert $(ICON_SVG) -background transparent -resize 32x32 $(ICONSET_DIR)/icon_32x32.png
+	@convert $(ICON_SVG) -background transparent -resize 64x64 $(ICONSET_DIR)/icon_32x32@2x.png
+	@convert $(ICON_SVG) -background transparent -resize 128x128 $(ICONSET_DIR)/icon_128x128.png
+	@convert $(ICON_SVG) -background transparent -resize 256x256 $(ICONSET_DIR)/icon_128x128@2x.png
+	@convert $(ICON_SVG) -background transparent -resize 256x256 $(ICONSET_DIR)/icon_256x256.png
+	@convert $(ICON_SVG) -background transparent -resize 512x512 $(ICONSET_DIR)/icon_256x256@2x.png
+	@convert $(ICON_SVG) -background transparent -resize 512x512 $(ICONSET_DIR)/icon_512x512.png
+	@convert $(ICON_SVG) -background transparent -resize 1024x1024 $(ICONSET_DIR)/icon_512x512@2x.png
+	@if command -v iconutil >/dev/null 2>&1; then \
+		echo "Converting iconset to icns using iconutil..."; \
+		iconutil -c icns $(ICONSET_DIR) -o $(ICON_ICNS); \
+	else \
+		echo "iconutil not available, creating simple icns with ImageMagick..."; \
+		convert $(ICONSET_DIR)/icon_512x512@2x.png -resize 1024x1024 $(ICON_ICNS); \
+	fi
+	@echo "macOS icon created: $(ICON_ICNS)"
 
 setup-dev: pre-commit-install ## Set up development environment
 	go mod download
@@ -37,7 +100,7 @@ format: ## Format code
 pre-commit-run: ## Run pre-commit hooks on all files
 	pre-commit run --all-files
 
-build: ## Build the application
+build: icons-common copy-icons-png ## Build the application
 	@mkdir -p $(BUILD_DIR)
 	go build $(BUILD_FLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_FILE)
 

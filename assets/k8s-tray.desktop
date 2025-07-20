@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=K8s Tray
+Comment=Kubernetes System Tray Monitor
+Exec=k8s-tray
+Icon=k8s-tray
+Terminal=false
+Type=Application
+Categories=Development;System;Network;
+Keywords=kubernetes;k8s;monitoring;system-tray;
+StartupNotify=false
+NoDisplay=false

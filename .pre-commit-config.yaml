@@ -15,10 +15,10 @@ repos:
         args: [-over=30]
       - id: validate-toml
       - id: no-go-testing
+      - id: go-build
       - id: golangci-lint
       - id: go-critic
       - id: go-unit-tests
-      - id: go-build
       - id: go-mod-tidy
 
   # Commit message validation
@@ -52,7 +52,7 @@ repos:
       - id: check-added-large-files
         name: Check Large Files
         description: Prevents large files from being committed
-        args: [--maxkb=500]
+        args: [--maxkb=1024]
 
   # Markdown formatting
   - repo: https://github.com/igorshubovych/markdownlint-cli

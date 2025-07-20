@@ -68,8 +68,14 @@ create_app_bundle() {
     fi
 
     # Copy icons if they exist
-    if [ -d "assets/icons" ]; then
+    if [ -f "assets/AppIcon.icns" ]; then
+        cp "assets/AppIcon.icns" "$app_bundle_path/Contents/Resources/AppIcon.icns"
+        print_info "Copied AppIcon.icns to bundle"
+    elif [ -d "assets/icons" ]; then
         cp -r assets/icons/* "$app_bundle_path/Contents/Resources/"
+        print_info "Copied icons directory to bundle"
+    else
+        print_warning "No icons found to copy to bundle"
     fi
 
     print_success "App bundle created: $app_bundle_path"

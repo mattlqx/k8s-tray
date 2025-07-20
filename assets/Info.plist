@@ -4,6 +4,10 @@
 <dict>
     <key>CFBundleExecutable</key>
     <string>k8s-tray</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>net.lqx.k8s-tray</string>
     <key>CFBundleName</key>
@@ -14,6 +18,8 @@
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1.0.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>10.15</string>
     <key>LSUIElement</key>
