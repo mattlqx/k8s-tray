@@ -1,4 +1,4 @@
-module github.com/k8s-tray/k8s-tray
+module github.com/mattlqx/k8s-tray
 
 go 1.23
 

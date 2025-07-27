@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/k8s-tray/k8s-tray/pkg/models"
+	"github.com/mattlqx/k8s-tray/pkg/models"
 )
 
 func TestGetPodStatusDisplayText(t *testing.T) {

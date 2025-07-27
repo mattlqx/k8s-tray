@@ -30,7 +30,7 @@ A Mac menu bar application for monitoring Kubernetes cluster health and status.
 
 ### Download
 
-1. Download the latest release from the [releases page](https://github.com/k8s-tray/k8s-tray/releases)
+1. Download the latest release from the [releases page](https://github.com/mattlqx/k8s-tray/releases)
 2. Extract the archive
 3. Move `k8s-tray` to your Applications folder or `/usr/local/bin`
 
@@ -303,9 +303,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- Report bugs: [GitHub Issues](https://github.com/k8s-tray/k8s-tray/issues)
-- Feature requests: [GitHub Discussions](https://github.com/k8s-tray/k8s-tray/discussions)
-- Documentation: [Wiki](https://github.com/k8s-tray/k8s-tray/wiki)
+- Report bugs: [GitHub Issues](https://github.com/mattlqx/k8s-tray/issues)
+- Feature requests: [GitHub Discussions](https://github.com/mattlqx/k8s-tray/discussions)
+- Documentation: [Wiki](https://github.com/mattlqx/k8s-tray/wiki)
 
 ## Acknowledgments
 

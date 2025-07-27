@@ -9,9 +9,9 @@ import (
 	"syscall"
 
 	"fyne.io/systray"
-	"github.com/k8s-tray/k8s-tray/internal/config"
-	"github.com/k8s-tray/k8s-tray/internal/kubernetes"
-	"github.com/k8s-tray/k8s-tray/internal/tray"
+	"github.com/mattlqx/k8s-tray/internal/config"
+	"github.com/mattlqx/k8s-tray/internal/kubernetes"
+	"github.com/mattlqx/k8s-tray/internal/tray"
 )
 
 func main() {

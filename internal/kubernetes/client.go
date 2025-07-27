@@ -11,8 +11,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/k8s-tray/k8s-tray/internal/config"
-	"github.com/k8s-tray/k8s-tray/pkg/models"
+	"github.com/mattlqx/k8s-tray/internal/config"
+	"github.com/mattlqx/k8s-tray/pkg/models"
 )
 
 // Client wraps the Kubernetes client with additional functionality

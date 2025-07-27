@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"fyne.io/systray"
-	"github.com/k8s-tray/k8s-tray/internal/config"
-	"github.com/k8s-tray/k8s-tray/internal/kubernetes"
-	"github.com/k8s-tray/k8s-tray/pkg/models"
+	"github.com/mattlqx/k8s-tray/internal/config"
+	"github.com/mattlqx/k8s-tray/internal/kubernetes"
+	"github.com/mattlqx/k8s-tray/pkg/models"
 )
 
 const osWindows = "windows"
